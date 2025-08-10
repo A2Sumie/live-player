@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import type { Player } from '@/lib/db';
+import type { PlayerWithBase64Image } from '@/lib/db';
 import Artplayer from "artplayer";
 import type { Option } from "artplayer/types/option";
 import Hls from "hls.js";
@@ -97,15 +97,23 @@ function _Artplayer({
 }
 
 interface PlayerProps {
-  player: Player;
+  player: PlayerWithBase64Image;
 }
 
 export default function PlayerComponent({ player }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
+  
+  // Determine poster image source - base64 binary data takes precedence
+  const getPosterImageSrc = () => {
+    if (player.coverImageBase64) {
+      return player.coverImageBase64;
+    }
+    return player.coverUrl || '';
+  };
 
   const playerOption: Omit<Option, "container"> = {
     url: player.url,
-    poster: player.coverUrl || '',
+    poster: getPosterImageSrc(),
     volume: 0.7,
     isLive: true,
     muted: false,

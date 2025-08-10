@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `cover_image` blob;

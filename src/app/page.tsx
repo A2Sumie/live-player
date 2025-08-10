@@ -7,10 +7,10 @@ import AddPlayerButton from '@/components/AddPlayerButton';
 import PlayerCard from '@/components/PlayerCard';
 import PlayerModal from '@/components/PlayerModal';
 import { useAuth } from '@/middleware/WithAuth';
-import type { Player } from '@/lib/db';
+import type { Player, PlayerWithBase64Image } from '@/lib/db';
 
 export default function Home() {
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<PlayerWithBase64Image[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -21,7 +21,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/players');
       if (response.ok) {
-        const data = await response.json() as Player[];
+        const data = await response.json() as PlayerWithBase64Image[];
         setPlayers(data);
       }
     } catch (error) {
@@ -40,12 +40,12 @@ export default function Home() {
     setModalOpen(true);
   };
 
-  const handleEditPlayer = (player: Player) => {
+  const handleEditPlayer = (player: PlayerWithBase64Image) => {
     setEditingPlayer(player);
     setModalOpen(true);
   };
 
-  const handleDeletePlayer = async (player: Player) => {
+  const handleDeletePlayer = async (player: PlayerWithBase64Image) => {
     try {
       const response = await fetch(`/api/players/${player.id}`, {
         method: 'DELETE',
@@ -64,7 +64,7 @@ export default function Home() {
     }
   };
 
-  const handleSubmitPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleSubmitPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt' | 'coverImage'>) => {
     setSubmitting(true);
     
     try {
@@ -84,10 +84,18 @@ export default function Home() {
       if (response.ok) {
         const savedPlayer = await response.json() as Player;
         
+        // Convert to PlayerWithBase64Image format
+        const savedPlayerWithBase64: PlayerWithBase64Image = {
+          ...savedPlayer,
+          coverImageBase64: savedPlayer.coverImage ? 
+            `data:image/jpeg;base64,${Buffer.from(savedPlayer.coverImage as ArrayBuffer).toString('base64')}` : 
+            null
+        };
+        
         if (isEditing) {
-          setPlayers(prev => prev.map(p => p.id === editingPlayer.id ? savedPlayer : p));
+          setPlayers(prev => prev.map(p => p.id === editingPlayer.id ? savedPlayerWithBase64 : p));
         } else {
-          setPlayers(prev => [savedPlayer, ...prev]);
+          setPlayers(prev => [savedPlayerWithBase64, ...prev]);
         }
         
         setModalOpen(false);

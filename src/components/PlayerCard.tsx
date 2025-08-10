@@ -2,16 +2,26 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/middleware/WithAuth';
-import type { Player } from '@/lib/db';
+import type { PlayerWithBase64Image } from '@/lib/db';
 
 interface PlayerCardProps {
-  player: Player;
-  onEdit?: (player: Player) => void;
-  onDelete?: (player: Player) => void;
+  player: PlayerWithBase64Image;
+  onEdit?: (player: PlayerWithBase64Image) => void;
+  onDelete?: (player: PlayerWithBase64Image) => void;
 }
 
 export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps) {
   const { user } = useAuth();
+  
+  // Determine cover image source - base64 binary data takes precedence
+  const getCoverImageSrc = () => {
+    if (player.coverImageBase64) {
+      return player.coverImageBase64;
+    }
+    return player.coverUrl || null;
+  };
+  
+  const coverImageSrc = getCoverImageSrc();
 
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -34,10 +44,10 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     <div className="group relative">
       <Link href={`/player/${player.pId}`} className="block">
         <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
-          {player.coverUrl && (
+          {coverImageSrc && (
             <div className="aspect-w-16 aspect-h-9 relative">
               <img
-                src={player.coverUrl}
+                src={coverImageSrc}
                 alt={player.name}
                 className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
               />
@@ -81,7 +91,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                 </p>
               </div>
             )}
-            {user?.role === 'admin' && !player.coverUrl && (
+            {user?.role === 'admin' && !coverImageSrc && (
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={handleEdit}

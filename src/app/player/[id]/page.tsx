@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getDb, players } from '@/lib/db';
+import { getDb, players, type PlayerWithBase64Image } from '@/lib/db';
 import PlayerComponent from '@/components/Player';
 import { eq } from 'drizzle-orm';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
@@ -8,9 +8,9 @@ interface PlayerPageProps {
   params: Promise<{ id: string }>;
 }
 
-async function getPlayer(pId: string) {
+async function getPlayer(pId: string): Promise<PlayerWithBase64Image | null> {
   try {
-    return await cache.getOrFetch(
+    const player = await cache.getOrFetch(
       CACHE_KEYS.PLAYER(pId),
       async () => {
         const db = getDb();
@@ -19,6 +19,18 @@ async function getPlayer(pId: string) {
       },
       CACHE_TTL.PLAYER
     );
+    
+    if (!player) return null;
+    
+    // Convert binary coverImage to base64 for frontend use
+    const playerWithBase64: PlayerWithBase64Image = {
+      ...player,
+      coverImageBase64: player.coverImage ? 
+        `data:image/jpeg;base64,${Buffer.from(player.coverImage as ArrayBuffer).toString('base64')}` : 
+        null
+    };
+    
+    return playerWithBase64;
   } catch (error) {
     console.error('Error fetching player:', error);
     return null;
