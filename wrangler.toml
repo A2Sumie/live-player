@@ -1,0 +1,28 @@
+name = "live-player"
+main = ".open-next/worker.js"
+compatibility_date = "2025-03-01"
+compatibility_flags = [ "nodejs_compat", "global_fetch_strictly_public" ]
+assets = { binding = "ASSETS", directory = ".open-next/assets"}
+observability = { enabled = true}
+
+[[d1_databases]]
+binding = "DB"
+database_name = "live-player"
+database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
+
+# [env.production]
+# vars = { NODE_ENV = "production" }
+
+# [[env.production.d1_databases]]
+# binding = "DB"
+# database_name = "live-player"
+# database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
+
+# [env.development]
+# vars = { NODE_ENV = "development" }
+
+# 本地开发不使用 D1，使用本地 SQLite 文件
+# [[env.development.d1_databases]]
+# binding = "DB"
+# database_name = "live-player"
+# database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
