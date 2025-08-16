@@ -15,15 +15,13 @@ export async function GET() {
       CACHE_TTL.PLAYER_LIST
     );
     
-    // Convert binary coverImage to base64 for frontend use
-    const playersWithBase64Images = playerList.map(player => ({
+    // Convert binary coverImage to array for JSON serialization
+    const playersWithArrayImages = playerList.map(player => ({
       ...player,
-      coverImageBase64: player.coverImage ? 
-        `data:image/jpeg;base64,${Buffer.from(player.coverImage as ArrayBuffer).toString('base64')}` : 
-        null
+      coverImage: player.coverImage ? Array.from(new Uint8Array(player.coverImage as ArrayBuffer)) : null
     }));
     
-    return NextResponse.json(playersWithBase64Images);
+    return NextResponse.json(playersWithArrayImages);
   } catch (error) {
     console.error('Error fetching players:', error);
     return NextResponse.json(
@@ -75,15 +73,13 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString()
     }).returning();
 
-    // Convert binary coverImage to base64 for frontend use
-    const playerWithBase64 = {
+    // Convert binary coverImage to array for JSON serialization
+    const playerWithArrayImage = {
       ...player,
-      coverImageBase64: player.coverImage ? 
-        `data:image/jpeg;base64,${Buffer.from(player.coverImage as ArrayBuffer).toString('base64')}` : 
-        null
+      coverImage: player.coverImage ? Array.from(new Uint8Array(player.coverImage as ArrayBuffer)) : null
     };
 
-    return NextResponse.json(playerWithBase64);
+    return NextResponse.json(playerWithArrayImage);
   } catch (error) {
     console.error('Error creating player:', error);
     return NextResponse.json(

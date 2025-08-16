@@ -63,15 +63,13 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
 
     cache.delete(CACHE_KEYS.PLAYER_LIST);
     cache.delete(CACHE_KEYS.PLAYER(pId));
-    // Convert binary coverImage to base64 for frontend use
-    const playerWithBase64 = {
+    // Convert binary coverImage to array for JSON serialization
+    const playerWithArrayImage = {
       ...player,
-      coverImageBase64: player.coverImage ? 
-        `data:image/jpeg;base64,${Buffer.from(player.coverImage as ArrayBuffer).toString('base64')}` : 
-        null
+      coverImage: player.coverImage ? Array.from(new Uint8Array(player.coverImage as ArrayBuffer)) : null
     };
 
-    return NextResponse.json(playerWithBase64);
+    return NextResponse.json(playerWithArrayImage);
   } catch (error) {
     console.error('Error updating player:', error);
     return NextResponse.json(

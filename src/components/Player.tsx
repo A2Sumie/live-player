@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import type { PlayerWithBase64Image } from '@/lib/db';
+import type { Player } from '@/lib/db';
 import Artplayer from "artplayer";
 import type { Option } from "artplayer/types/option";
 import Hls from "hls.js";
@@ -97,16 +97,21 @@ function _Artplayer({
 }
 
 interface PlayerProps {
-  player: PlayerWithBase64Image;
+  player: Player;
 }
 
 export default function PlayerComponent({ player }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
   
-  // Determine poster image source - base64 binary data takes precedence
+  // Determine poster image source - convert binary data to base64 on client side
   const getPosterImageSrc = () => {
-    if (player.coverImageBase64) {
-      return player.coverImageBase64;
+    if (player.coverImage) {
+      // Handle both ArrayBuffer (from SSR) and Array (from API)
+      const uint8Array = Array.isArray(player.coverImage) 
+        ? new Uint8Array(player.coverImage)
+        : new Uint8Array(player.coverImage as ArrayBuffer);
+      const base64 = btoa(String.fromCharCode(...uint8Array));
+      return `data:image/jpeg;base64,${base64}`;
     }
     return player.coverUrl || '';
   };

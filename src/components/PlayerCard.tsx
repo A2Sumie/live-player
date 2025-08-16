@@ -2,21 +2,26 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/middleware/WithAuth';
-import type { PlayerWithBase64Image } from '@/lib/db';
+import type { Player } from '@/lib/db';
 
 interface PlayerCardProps {
-  player: PlayerWithBase64Image;
-  onEdit?: (player: PlayerWithBase64Image) => void;
-  onDelete?: (player: PlayerWithBase64Image) => void;
+  player: Player;
+  onEdit?: (player: Player) => void;
+  onDelete?: (player: Player) => void;
 }
 
 export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps) {
   const { user } = useAuth();
   
-  // Determine cover image source - base64 binary data takes precedence
+  // Determine cover image source - convert binary data to base64 on client side
   const getCoverImageSrc = () => {
-    if (player.coverImageBase64) {
-      return player.coverImageBase64;
+    if (player.coverImage) {
+      // Handle both ArrayBuffer (from SSR) and Array (from API)
+      const uint8Array = Array.isArray(player.coverImage) 
+        ? new Uint8Array(player.coverImage)
+        : new Uint8Array(player.coverImage as ArrayBuffer);
+      const base64 = btoa(String.fromCharCode(...uint8Array));
+      return `data:image/jpeg;base64,${base64}`;
     }
     return player.coverUrl || null;
   };
