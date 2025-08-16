@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getDb, players } from '@/lib/db';
 import PlayerComponent from '@/components/Player';
 import { eq } from 'drizzle-orm';
+import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 interface PlayerPageProps {
   params: Promise<{ id: string }>;
@@ -9,9 +10,15 @@ interface PlayerPageProps {
 
 async function getPlayer(pId: string) {
   try {
-    const db = getDb();
-    const [player] = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
-    return player || null;
+    return await cache.getOrFetch(
+      CACHE_KEYS.PLAYER(pId),
+      async () => {
+        const db = getDb();
+        const [player] = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
+        return player || null;
+      },
+      CACHE_TTL.PLAYER
+    );
   } catch (error) {
     console.error('Error fetching player:', error);
     return null;

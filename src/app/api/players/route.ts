@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { desc, eq } from 'drizzle-orm';
+import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 
 export async function GET() {
   try {
-    const db = getDb();
-    const playerList = await db.select().from(players).orderBy(desc(players.updatedAt));
+    const playerList = await cache.getOrFetch(
+      CACHE_KEYS.PLAYER_LIST,
+      async () => {
+        const db = getDb();
+        return await db.select().from(players).orderBy(desc(players.updatedAt));
+      },
+      CACHE_TTL.PLAYER_LIST
+    );
+    
     return NextResponse.json(playerList);
   } catch (error) {
     console.error('Error fetching players:', error);

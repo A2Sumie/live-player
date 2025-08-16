@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { eq, and, ne } from 'drizzle-orm';
+import { cache, CACHE_KEYS } from '@/lib/cache';
 
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -60,6 +61,9 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       .where(eq(players.id, playerId))
       .returning();
 
+    cache.delete(CACHE_KEYS.PLAYER_LIST);
+    cache.delete(CACHE_KEYS.PLAYER(pId));
+
     return NextResponse.json(player);
   } catch (error) {
     console.error('Error updating player:', error);
@@ -92,7 +96,15 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     }
 
     const db = getDb();
+    
+    const [existingPlayer] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
+    
     await db.delete(players).where(eq(players.id, playerId));
+
+    if (existingPlayer) {
+      cache.delete(CACHE_KEYS.PLAYER_LIST);
+      cache.delete(CACHE_KEYS.PLAYER(existingPlayer.pId));
+    }
 
     return NextResponse.json({ message: 'Player deleted successfully' });
   } catch (error) {
