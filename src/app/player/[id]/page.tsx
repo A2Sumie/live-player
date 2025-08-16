@@ -15,6 +15,7 @@ async function getPlayer(pId: string): Promise<PlayerWithBase64Image | null> {
       async () => {
         const db = getDb();
         const [player] = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
+        if (player) cache.set(CACHE_KEYS.PLAYER(pId), player, CACHE_TTL.PLAYER);
         return player || null;
       },
       CACHE_TTL.PLAYER
