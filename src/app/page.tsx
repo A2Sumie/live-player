@@ -116,12 +116,28 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    // 修改点 1: 添加背景图片样式
+    // 请将您的背景图命名为 background.png 并放入 public 文件夹，或者修改下方的 url
+    <div 
+      className="min-h-screen bg-gray-50 py-8 bg-cover bg-center bg-no-repeat bg-fixed"
+      style={{
+        backgroundImage: 'url("/background.png")', // 这里设置背景图
+        // 如果您希望背景是半透明叠加在灰色背景上，可以使用:
+        // backgroundImage: 'linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.8)), url("/background.png")'
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            楽しみましょう
-          </h1>
+          {/* 修改点 2: 将原来的 h1 替换为两行自定义文字 */}
+          <div className="mb-6">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              TV.N2NJ.MOE 共星组呈上
+            </h1>
+            <h2 className="text-xl text-gray-700 font-medium">
+              为22/7以及秋系同好的转播站 基于ChocoLZS/live-player 群组@Q.161717573
+            </h2>
+          </div>
+          
           <AdminControls />
           {user?.role === 'admin' && (
             <div className="flex justify-center mb-8">
