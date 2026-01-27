@@ -1,6 +1,17 @@
-# Online Streaming Player Management Platform
+# live-player (Fork)
 
-A comprehensive online streaming player management tool built to run on Cloudflare Workers. This platform allows users to browse, manage, and watch online streaming content with full administrative capabilities.
+> [!NOTE]
+> **This is a customized fork maintained by @A2Sumie.**
+> It is deployed on **Cloudflare Pages** and integrates with backend services.
+>
+> **Key Modifications:**
+> - **Authentication**: Integrated custom auth system with admin management.
+> - **Scheduling**: Added schedule management and automated task execution (CIC).
+> - **Backend Integration**: Communicates with backend services via custom API endpoints.
+> - **Database**: Uses D1 database for state and schedule persistence.
+
+Next Generation HLS Player
+Based on [ArtPlayer](https://artplayer.org/)
 
 ## 🚀 Features
 
