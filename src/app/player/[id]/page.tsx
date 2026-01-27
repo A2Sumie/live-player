@@ -20,7 +20,7 @@ const getPlayer = cache(async (pId: string): Promise<Player | null> => {
       },
       CACHE_TTL.PLAYER
     );
-    
+
     return player;
   } catch (error) {
     console.error('Error fetching player:', error);
@@ -31,7 +31,7 @@ const getPlayer = cache(async (pId: string): Promise<Player | null> => {
 export async function generateMetadata({ params }: PlayerPageProps) {
   const resolvedParams = await params;
   const player = await getPlayer(resolvedParams.id);
-  
+
   if (!player) {
     return {
       title: 'Player Not Found',
@@ -47,6 +47,13 @@ export async function generateMetadata({ params }: PlayerPageProps) {
 export default async function PlayerPage({ params }: PlayerPageProps) {
   const resolvedParams = await params;
   const player = await getPlayer(resolvedParams.id);
+
+  if (player && player.url) {
+    // Dynamically sign the URL on the server side before sending to client
+    const { signStreamUrl } = await import('@/lib/stream-auth');
+    player.url = signStreamUrl(player.url);
+  }
+
 
   if (!player) {
     notFound();

@@ -5,10 +5,23 @@ compatibility_flags = [ "nodejs_compat", "global_fetch_strictly_public" ]
 assets = { binding = "ASSETS", directory = ".open-next/assets"}
 observability = { enabled = true}
 
+# Worker Routes
+[[routes]]
+pattern = "tv.n2nj.moe/*"
+zone_name = "n2nj.moe"
+
+[[routes]]
+pattern = "cic.n2nj.moe/*"
+zone_name = "n2nj.moe"
+
+# Cron Triggers for schedule execution
+[triggers]
+crons = ["* * * * *"]  # Every minute
+
 [[d1_databases]]
 binding = "DB"
 database_name = "live-player"
-database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
+database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
 
 # [env.production]
 # vars = { NODE_ENV = "production" }
@@ -16,7 +29,7 @@ database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
 # [[env.production.d1_databases]]
 # binding = "DB"
 # database_name = "live-player"
-# database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
+# database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
 
 # [env.development]
 # vars = { NODE_ENV = "development" }
@@ -25,4 +38,4 @@ database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
 # [[env.development.d1_databases]]
 # binding = "DB"
 # database_name = "live-player"
-# database_id = "e924cbbd-2875-43a6-a24d-e95636c79481"
+# database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
