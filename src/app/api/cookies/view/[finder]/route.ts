@@ -1,0 +1,62 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+
+const API_SECRET = process.env.INTERNAL_API_SECRET;
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL;
+const WAF_BYPASS_HEADER = process.env.WAF_BYPASS_HEADER;
+
+export async function GET(
+    req: NextRequest,
+    context: { params: Promise<{ finder: string }> }
+) {
+    try {
+        // Check authentication
+        const user = await getCurrentUser();
+        if (!user) {
+            return NextResponse.json(
+                { error: 'Not authenticated' },
+                { status: 401 }
+            );
+        }
+
+        if (!API_SECRET || !INTERNAL_API_URL || !WAF_BYPASS_HEADER) {
+            console.error('Missing environment variables for internal API');
+            return NextResponse.json(
+                { error: 'Server configuration error' },
+                { status: 500 }
+            );
+        }
+
+        const params = await context.params;
+        const { finder } = params;
+
+        // Proxy request to internal API
+        const response = await fetch(`${INTERNAL_API_URL}/api/cookie/${finder}`, {
+            headers: {
+                'Authorization': `Bearer ${API_SECRET}`,
+                'x-bypass-waf': WAF_BYPASS_HEADER
+            }
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return NextResponse.json(
+                    { error: 'Cookie not found' },
+                    { status: 404 }
+                );
+            }
+            console.error(`Internal API returned ${response.status} for /api/cookie/${finder}`);
+            throw new Error(`API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        return NextResponse.json(data);
+
+    } catch (error) {
+        console.error('Proxy error for /api/cookies/view/[finder]:', error);
+        return NextResponse.json(
+            { error: 'Failed to fetch cookie' },
+            { status: 500 }
+        );
+    }
+}
