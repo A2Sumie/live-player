@@ -46,7 +46,8 @@ export default function ConfigManagePage() {
             }
 
             if (!response.ok) {
-                throw new Error('Failed to fetch crawler config');
+                const errorData = await response.json().catch(() => ({ error: 'Failed to fetch crawler config' })) as { error?: string };
+                throw new Error(errorData.error || 'Failed to fetch crawler config');
             }
 
             const data = await response.json() as Crawler[];

@@ -39,14 +39,18 @@ export async function GET(
         });
 
         if (!response.ok) {
+            const errorText = await response.text();
             if (response.status === 404) {
                 return NextResponse.json(
                     { error: 'Cookie not found' },
                     { status: 404 }
                 );
             }
-            console.error(`Internal API returned ${response.status} for /api/cookie/${finder}`);
-            throw new Error(`API returned ${response.status}`);
+            console.error(`Internal API returned ${response.status} for /api/cookie/${finder}: ${errorText}`);
+            return NextResponse.json(
+                { error: `Upstream Error: ${response.statusText} - ${errorText}` },
+                { status: response.status }
+            );
         }
 
         const data = await response.json();
@@ -55,7 +59,7 @@ export async function GET(
     } catch (error) {
         console.error('Proxy error for /api/cookies/view/[finder]:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch cookie' },
+            { error: `Internal Proxy Error: ${error instanceof Error ? error.message : String(error)}` },
             { status: 500 }
         );
     }

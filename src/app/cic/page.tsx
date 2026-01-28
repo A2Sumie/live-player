@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/middleware/WithAuth';
 
 interface Schedule {
     id: number;
@@ -16,12 +18,23 @@ export default function CICPage() {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateForm, setShowCreateForm] = useState(false);
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
+
+    // Require authentication
+    useEffect(() => {
+        if (!authLoading && !user) {
+            router.push('/auth/login?redirect=/cic');
+        }
+    }, [user, authLoading, router]);
 
     useEffect(() => {
-        loadSchedules();
-        const interval = setInterval(loadSchedules, 30000); // 每30秒刷新
-        return () => clearInterval(interval);
-    }, []);
+        if (user) {
+            loadSchedules();
+            const interval = setInterval(loadSchedules, 30000); // 每30秒刷新
+            return () => clearInterval(interval);
+        }
+    }, [user]);
 
     async function loadSchedules() {
         try {
@@ -91,6 +104,18 @@ export default function CICPage() {
         }
     }
 
+    // Show loading state while checking auth
+    if (authLoading || !user) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                    <p className="text-white">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-8">
             <div className="max-w-6xl mx-auto">
@@ -98,16 +123,33 @@ export default function CICPage() {
                 <header className="bg-white rounded-lg shadow-lg p-6 mb-8">
                     <h1 className="text-3xl font-bold text-gray-800">🎬 StreamServ Control Center</h1>
                     <p className="text-gray-600 mt-2">集中控制面板 - cic.n2nj.moe</p>
+                    <p className="text-sm text-gray-500 mt-1">Logged in as: {user.username} ({user.role})</p>
                 </header>
 
                 {/* Actions */}
                 <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
-                    <button
-                        onClick={() => setShowCreateForm(!showCreateForm)}
-                        className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
-                    >
-                        {showCreateForm ? '取消' : '+ 创建新日程'}
-                    </button>
+                    <div className="flex gap-3 flex-wrap">
+                        <button
+                            onClick={() => setShowCreateForm(!showCreateForm)}
+                            className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+                        >
+                            {showCreateForm ? '取消' : '+ 创建新日程'}
+                        </button>
+                        <a
+                            href="/cookies/view"
+                            className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition inline-flex items-center gap-2"
+                        >
+                            <span>🍪</span>
+                            <span>Cookie Manager</span>
+                        </a>
+                        <a
+                            href="/config"
+                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition inline-flex items-center gap-2"
+                        >
+                            <span>⚙️</span>
+                            <span>Crawler Config</span>
+                        </a>
+                    </div>
                 </div>
 
                 {/* Create Form */}

@@ -30,16 +30,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await fetch('/api/auth/me', {
         credentials: 'include',
       });
-      
+
       if (response.ok) {
         const userData = await response.json() as User;
         setUser(userData);
       } else {
-        setUser({ username: 'guest', role: 'user' });
+        setUser(null); // Force authentication, no guest user
       }
     } catch (error) {
       console.error('Failed to fetch user:', error);
-      setUser({ username: 'guest', role: 'user' });
+      setUser(null); // Force authentication, no guest user
     } finally {
       setLoading(false);
     }
@@ -77,8 +77,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error) {
       console.error('Logout failed:', error);
     }
-    
-    setUser({ username: 'guest', role: 'user' });
+
+    setUser(null); // Clear user on logout
   };
 
   const refreshUser = async () => {
@@ -90,13 +90,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        loading, 
-        login, 
-        logout, 
-        refreshUser 
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        refreshUser
       }}
     >
       {children}

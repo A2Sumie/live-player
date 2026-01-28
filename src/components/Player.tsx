@@ -8,6 +8,13 @@ import type { Option } from "artplayer";
 import Hls from "hls.js";
 import artplayerPluginHlsControl from 'artplayer-plugin-hls-control';
 
+// Extend Artplayer type to include hls property
+declare module 'artplayer' {
+  interface Artplayer {
+    hls?: Hls;
+  }
+}
+
 function _Artplayer({
   option,
   getInstance,
@@ -21,7 +28,7 @@ function _Artplayer({
   const playM3u8 = useCallback(
     (video: HTMLVideoElement, url: string, art: Artplayer) => {
       if (Hls.isSupported()) {
-        if (art.hls) art.hls.destroy();
+        if ((art as any).hls) (art as any).hls.destroy();
         const originUrlObj = new URL(url);
         const queryParms = originUrlObj.searchParams;
         const hls = new Hls({
@@ -37,7 +44,7 @@ function _Artplayer({
         });
         hls.loadSource(url);
         hls.attachMedia(video);
-        art.hls = hls;
+        (art as any).hls = hls;
         art.on("destroy", () => hls.destroy());
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
