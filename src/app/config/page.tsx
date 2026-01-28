@@ -1,25 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/middleware/WithAuth';
+import ConfigNode from './components/ConfigNode';
+import ConfigEditor from './components/ConfigEditor';
+import { AppConfig, VisualNode, VisualConnection, NodeType, Crawler, Forwarder, ForwardTarget } from './types';
+import _ from 'lodash';
 
-interface Crawler {
-    name: string;
-    type: string;
-    schedule: string | null;
-    cookieFile: string | null;
-    enabled: boolean;
-}
-
-export default function ConfigManagePage() {
+export default function ConfigPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
-    const [crawlers, setCrawlers] = useState<Crawler[]>([]);
+
+    // State
+    const [config, setConfig] = useState<AppConfig | null>(null);
+    const [nodes, setNodes] = useState<VisualNode[]>([]);
+    const [connections, setConnections] = useState<VisualConnection[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [editingSchedule, setEditingSchedule] = useState<string | null>(null);
-    const [newSchedule, setNewSchedule] = useState('');
+    const [status, setStatus] = useState<string | null>(null);
+    const [showDebug, setShowDebug] = useState(false);
+
+    // Editor State
+    const [editingNode, setEditingNode] = useState<VisualNode | null>(null);
+    const [restarting, setRestarting] = useState(false);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -29,166 +33,384 @@ export default function ConfigManagePage() {
 
     useEffect(() => {
         if (user) {
-            fetchCrawlers();
+            fetchConfig();
         }
     }, [user]);
 
-    const fetchCrawlers = async () => {
+    // Layout Constants
+    const LAYER_WIDTH = 250;
+    const LAYER_GAP = 100;
+    const NODE_HEIGHT = 100;
+    const NODE_GAP = 20;
+
+    const [availableCookies, setAvailableCookies] = useState<string[]>([]);
+
+    const fetchConfig = async () => {
         setLoading(true);
         setError('');
-
         try {
-            const response = await fetch('/api/config/crawlers');
+            const [configRes, cookiesRes] = await Promise.all([
+                fetch('/api/config'),
+                fetch('/api/cookies/list')
+            ]);
 
-            if (response.status === 401) {
+            if (configRes.status === 401 || cookiesRes.status === 401) {
                 router.push('/auth/login?redirect=/config');
                 return;
             }
+            if (!configRes.ok) throw new Error('Failed to fetch config');
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to fetch crawler config' })) as { error?: string };
-                throw new Error(errorData.error || 'Failed to fetch crawler config');
+            const configData = await configRes.json() as AppConfig;
+            setConfig(configData);
+            processGraph(configData);
+
+            if (cookiesRes.ok) {
+                const cookiesData = await cookiesRes.json() as any[];
+                setAvailableCookies(cookiesData.map((c: any) => c.filename));
             }
-
-            const data = await response.json() as Crawler[];
-            setCrawlers(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load crawlers');
+            setError(err instanceof Error ? err.message : 'Failed to load data');
         } finally {
             setLoading(false);
         }
     };
 
-    const parseCronExpression = (cron: string | null): string => {
-        if (!cron) return 'No schedule';
+    const processGraph = (data: AppConfig) => {
+        const newNodes: VisualNode[] = [];
+        const newConnections: VisualConnection[] = [];
 
-        // 简单的cron表达式解析
-        const parts = cron.split(' ');
-        if (parts.length === 5) {
-            const [minute, hour, , , weekday] = parts;
+        // 1. Crawlers (Layer 0)
+        const crawlers = data.crawlers || [];
+        crawlers.forEach((crawler, i) => {
+            const nodeId = `crawler-${i}`;
 
-            if (minute === '*/5') return 'Every 5 minutes';
-            if (minute === '*/10') return 'Every 10 minutes';
-            if (minute === '*/30') return 'Every 30 minutes';
-            if (hour === '*/1') return 'Every hour';
+            // Add Crawler Node
+            newNodes.push({
+                id: nodeId,
+                type: 'crawler',
+                label: crawler.name || `Crawler ${i + 1}`,
+                data: crawler,
+                x: 0 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                y: i * (NODE_HEIGHT + NODE_GAP) + 100,
+                width: LAYER_WIDTH,
+                height: NODE_HEIGHT
+            });
 
-            if (hour !== '*' && minute !== '*') {
-                return `Daily at ${hour}:${minute.padStart(2, '0')}`;
+            // 2. Translator (Layer 1) - Nested in Crawler
+            if (crawler.cfg_crawler?.translator) {
+                const translatorId = `translator-${i}`;
+                newNodes.push({
+                    id: translatorId,
+                    type: 'translator',
+                    label: `Translate (${crawler.cfg_crawler.translator.provider})`,
+                    data: crawler.cfg_crawler.translator,
+                    x: 1 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                    y: i * (NODE_HEIGHT + NODE_GAP) + 100, // Align with crawler
+                    width: LAYER_WIDTH,
+                    height: NODE_HEIGHT,
+                    parentId: nodeId
+                });
+                newConnections.push({
+                    id: `conn-c-t-${i}`,
+                    source: nodeId,
+                    target: translatorId
+                });
+            }
+        });
+
+        // 3. Forwarders (Layer 2)
+        const forwarders = data.forwarders || [];
+        forwarders.forEach((forwarder, i) => {
+            const forwarderId = `forwarder-${i}`;
+            const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
+
+            newNodes.push({
+                id: forwarderId,
+                type: 'forwarder',
+                label: forwarder.name || `Forwarder ${i + 1}`,
+                data: forwarder,
+                x: 2 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                y: yPos,
+                width: LAYER_WIDTH,
+                height: NODE_HEIGHT
+            });
+
+            // Connect from matching crawlers (Logic based on names/match - simplified for now: all crawlers -> all forwarders?? 
+            // Usually forwarders subscribe appropriately? 
+            // In BBQ Utils, it seems mostly independent or loosely coupled. 
+            // But visually we can show links if we define logic. 
+            // For now, let's keep them separated unless explicit link found.
+            // Assumption: Left-to-right flow implies usage. 
+            // Let's connect "Generic" link if no specific match, or just listing them.
+            // Actually forwarders pull from database, so logic is decoupled. 
+            // BUT, users like to see flow. Let's draw dashed lines from Crawlers to Forwarders?
+            // Or just leave them in columns.
+            // Let's leave them in columns for now.
+
+            // 4. Formatter (Layer 3) - Nested in Forwarder
+            const renderType = forwarder.cfg_forwarder?.render_type || 'text';
+            const formatterId = `formatter-${i}`;
+
+            newNodes.push({
+                id: formatterId,
+                type: 'formatter',
+                label: `Format: ${renderType}`,
+                data: forwarder.cfg_forwarder || {}, // Pass ref to cfg to edit render_type
+                x: 3 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                y: yPos,
+                width: LAYER_WIDTH,
+                height: NODE_HEIGHT,
+                parentId: forwarderId
+            });
+            newConnections.push({
+                id: `conn-f-fmt-${i}`,
+                source: forwarderId,
+                target: formatterId
+            });
+
+            // 5. Targets (Layer 4)
+            // Forwarder list of Targets is NOT explicit in Forwarder object in `AppConfig` type I saw?
+            // Wait, Forwarder has `subscribers`? Or `targets`?
+            // Types file: `forwarders?: Array<Forwarder<TaskType>>`.
+            // `Forwarder` interface I saw earlier had `subscribers`.
+            // Or `forward_targets` is a global list?
+            // Let's check `AppConfig` again. `forward_targets?: Array<ForwardTarget>`.
+            // These are the *definitions* of targets (platforms).
+            // Forward logic uses them.
+            // Let's list `forward_targets` in their own column.
+        });
+
+        const targets = data.forward_targets || [];
+        targets.forEach((target, i) => {
+            const targetId = `target-${i}`;
+            const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
+
+            newNodes.push({
+                id: targetId,
+                type: 'target',
+                label: `${target.platform} (${target.id || 'Global'})`,
+                data: target,
+                x: 4 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                y: yPos,
+                width: LAYER_WIDTH,
+                height: NODE_HEIGHT
+            });
+
+            // Connect ALL forwarders/formatters to ALL targets? 
+            // Or connect Formatters to Targets.
+            // Since explicit routing is complex (regex matching), let's just visually link right-most nodes.
+            // For now, implicit connection.
+        });
+
+        setNodes(newNodes);
+        setConnections(newConnections);
+    };
+
+    const handleNodeSave = async (node: VisualNode, newData: any) => {
+        if (!config) return;
+        const newConfig = _.cloneDeep(config); // Deep clone to avoid mutation issues
+
+        // Update the config object based on node type and ID
+        // Note: Graph generation used index. IDs are `type-index`.
+        const [type, indexStr] = node.id.split('-');
+        const index = parseInt(indexStr);
+
+        if (type === 'crawler') {
+            if (newConfig.crawlers && newConfig.crawlers[index]) {
+                newConfig.crawlers[index] = newData as Crawler;
+            }
+        } else if (type === 'translator') {
+            // Translator is inside crawler. Node was generated from crawler index (assumed 1-1 mapping for visual simplicity logic above)
+            // But wait, my graph logic `translator-${i}` matches `crawler-${i}`. Yes.
+            if (newConfig.crawlers && newConfig.crawlers[index]) {
+                if (!newConfig.crawlers[index].cfg_crawler) newConfig.crawlers[index].cfg_crawler = {};
+                newConfig.crawlers[index].cfg_crawler!.translator = newData;
+            }
+        } else if (type === 'forwarder') {
+            if (newConfig.forwarders && newConfig.forwarders[index]) {
+                newConfig.forwarders[index] = newData as Forwarder;
+            }
+        } else if (type === 'formatter') {
+            // Formatter is inside forwarder.
+            if (newConfig.forwarders && newConfig.forwarders[index]) {
+                if (!newConfig.forwarders[index].cfg_forwarder) newConfig.forwarders[index].cfg_forwarder = {};
+                // Updates to cfg_forwarder (render_type)
+                newConfig.forwarders[index].cfg_forwarder!.render_type = newData.render_type;
+            }
+        } else if (type === 'target') {
+            if (newConfig.forward_targets && newConfig.forward_targets[index]) {
+                newConfig.forward_targets[index] = newData as ForwardTarget;
             }
         }
 
-        return cron;
+        setConfig(newConfig);
+        processGraph(newConfig); // Re-render graph
+        setEditingNode(null);
+
+        // Auto-save to backend
+        try {
+            setStatus('Saving...');
+            const res = await fetch('/api/config/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newConfig)
+            });
+
+            if (!res.ok) throw new Error('Failed to save to backend');
+
+            setStatus('Saved successfully! Restart server to apply.');
+        } catch (e: any) {
+            setStatus(`Error saving: ${e.message}`);
+        }
+    };
+
+    const handleRestart = async () => {
+        if (!confirm('Are you sure you want to restart the backend server? This will interrupt active tasks.')) return;
+
+        setRestarting(true);
+        setStatus('Restarting server...');
+
+        try {
+            const res = await fetch('/api/server/restart', { method: 'POST' });
+            if (!res.ok) throw new Error('Restart request failed');
+
+            setStatus('Server restart command sent. Please wait for service to recover.');
+
+            // Poll for health or just wait
+            setTimeout(() => {
+                setRestarting(false);
+                setStatus('Server should be back up. Refresh if needed.');
+            }, 5000);
+
+        } catch (e: any) {
+            setStatus(`Restart Error: ${e.message}`);
+            setRestarting(false);
+        }
     };
 
     if (authLoading || !user) {
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-                <div className="text-white text-xl">Loading...</div>
-            </div>
-        );
+        return <div className="min-h-screen bg-black flex items-center justify-center text-white">Loading...</div>;
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900 p-8">
-            <div className="max-w-7xl mx-auto">
-                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
-                    <h1 className="text-4xl font-bold text-white mb-6 flex items-center gap-3">
-                        <span className="text-5xl">⚙️</span>
-                        Crawler Configuration
+        <div className="min-h-screen bg-[#111] text-white overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-[#1a1a1a] border-b border-white/10 p-4 flex justify-between items-center z-10 shadow-md">
+                <div className="flex items-center gap-3">
+                    <h1 className="text-xl font-bold flex items-center gap-2">
+                        <span>⚙️</span> Configuration Graph
                     </h1>
-
-                    <div className="mb-6 text-sm text-white/60">
-                        Logged in as <span className="font-semibold text-white">{user.username}</span>
-                    </div>
-
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200">
-                            {error}
-                        </div>
+                    {status && (
+                        <span className={`text-xs px-2 py-1 rounded ${status.includes('Error') ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}`}>
+                            {status}
+                        </span>
                     )}
+                </div>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setShowDebug(!showDebug)}
+                        className={`px-3 py-1 rounded text-sm transition-colors ${showDebug ? 'bg-purple-600 text-white' : 'bg-white/5 hover:bg-white/10'}`}
+                    >
+                        Debug Info
+                    </button>
+                    <button
+                        onClick={fetchConfig}
+                        className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded text-sm transition-colors"
+                        disabled={loading}
+                    >
+                        Refresh
+                    </button>
+                    <button
+                        onClick={handleRestart}
+                        disabled={restarting}
+                        className={`px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors flex items-center gap-2 ${restarting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {restarting ? 'Restarting...' : 'Restart Server'}
+                    </button>
+                </div>
+            </div>
 
-                    {/* Crawler Table */}
-                    {(
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-2xl font-bold text-white">Crawlers ({crawlers.length})</h2>
-                                <button
-                                    onClick={fetchCrawlers}
-                                    disabled={loading}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
-                                >
-                                    {loading ? 'Loading...' : 'Refresh'}
-                                </button>
-                            </div>
+            {/* Canvas */}
+            <div className="flex-grow relative overflow-auto bg-[url('/grid.svg')] bg-fixed" style={{ backgroundSize: '20px 20px' }}>
+                <div className="absolute inset-0 min-w-[1500px] min-h-[1000px]">
+                    {/* SVG Connections Layer */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                        {connections.map(conn => {
+                            const source = nodes.find(n => n.id === conn.source);
+                            const target = nodes.find(n => n.id === conn.target);
+                            if (!source || !target) return null;
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="text-left border-b border-white/20">
-                                            <th className="pb-3 px-4 text-white font-semibold">Name</th>
-                                            <th className="pb-3 px-4 text-white font-semibold">Type</th>
-                                            <th className="pb-3 px-4 text-white font-semibold">Schedule</th>
-                                            <th className="pb-3 px-4 text-white font-semibold">Cookie File</th>
-                                            <th className="pb-3 px-4 text-white font-semibold">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {crawlers.map(crawler => (
-                                            <tr
-                                                key={crawler.name}
-                                                className="border-b border-white/10 hover:bg-white/5 transition-colors"
-                                            >
-                                                <td className="py-4 px-4 text-white font-medium">{crawler.name}</td>
-                                                <td className="py-4 px-4">
-                                                    <span className="px-2 py-1 bg-blue-600/30 text-blue-200 rounded text-sm">
-                                                        {crawler.type}
-                                                    </span>
-                                                </td>
-                                                <td className="py-4 px-4">
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="text-white/80 text-sm">
-                                                            {parseCronExpression(crawler.schedule)}
-                                                        </span>
-                                                        {crawler.schedule && (
-                                                            <span className="text-white/40 text-xs font-mono">
-                                                                {crawler.schedule}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="py-4 px-4">
-                                                    {crawler.cookieFile ? (
-                                                        <span className="text-green-400 text-sm font-mono">
-                                                            {crawler.cookieFile.split('/').pop()}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-white/40 text-sm">N/A</span>
-                                                    )}
-                                                </td>
-                                                <td className="py-4 px-4">
-                                                    <span className={`px-2 py-1 rounded text-sm ${crawler.enabled
-                                                        ? 'bg-green-600/30 text-green-200'
-                                                        : 'bg-gray-600/30 text-gray-200'
-                                                        }`}>
-                                                        {crawler.enabled ? 'Enabled' : 'Disabled'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                            const startX = source.x + source.width;
+                            const startY = source.y + source.height / 2;
+                            const endX = target.x;
+                            const endY = target.y + target.height / 2;
 
-                            <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
-                                <p className="text-yellow-200 text-sm">
-                                    <strong>Note:</strong> Schedule editing will be available in a future update.
-                                    For now, this page provides a read-only view of your crawler configurations.
+                            return (
+                                <path
+                                    key={conn.id}
+                                    d={`M ${startX} ${startY} C ${startX + 50} ${startY}, ${endX - 50} ${endY}, ${endX} ${endY}`}
+                                    fill="none"
+                                    stroke="#555"
+                                    strokeWidth="2"
+                                    strokeDasharray="5,5"
+                                />
+                            );
+                        })}
+                    </svg>
+
+                    {/* Nodes Layer */}
+                    {nodes.length === 0 && !loading && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="text-center p-8 bg-black/50 backdrop-blur-md rounded-xl border border-white/10 select-none pointer-events-auto">
+                                <div className="text-4xl mb-4">🕸️</div>
+                                <h3 className="text-xl font-bold text-white mb-2">No Configuration Found</h3>
+                                <p className="text-white/60 max-w-md">
+                                    The crawler/forwarder graph is empty. Please check your backend <code>config.yaml</code> or check console for errors.
                                 </p>
                             </div>
                         </div>
                     )}
+
+                    {nodes.map(node => (
+                        <ConfigNode
+                            key={node.id}
+                            node={node}
+                            onClick={(n) => setEditingNode(n)}
+                        />
+                    ))}
+
+                    {/* Node Layers Labels */}
+                    <div className="absolute top-4 left-[50px] text-white/20 font-bold text-xl">CRAWLERS</div>
+                    <div className="absolute top-4 left-[400px] text-white/20 font-bold text-xl">TRANSLATORS</div>
+                    <div className="absolute top-4 left-[750px] text-white/20 font-bold text-xl">FORWARDERS</div>
+                    <div className="absolute top-4 left-[1100px] text-white/20 font-bold text-xl">FORMATTERS</div>
+                    <div className="absolute top-4 left-[1450px] text-white/20 font-bold text-xl">TARGETS</div>
                 </div>
             </div>
+
+            {/* Debug Info Panel */}
+            {showDebug && config && (
+                <div className="h-64 border-t border-white/10 bg-black/90 p-4 font-mono text-xs overflow-auto">
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="font-bold text-lg text-purple-300">Backend Config Debug</h3>
+                        <button onClick={() => setShowDebug(false)} className="text-white/60 hover:text-white">✕ Close</button>
+                    </div>
+                    <pre className="text-green-400 whitespace-pre-wrap">
+                        {JSON.stringify(config, null, 2)}
+                    </pre>
+                </div>
+            )}
+
+            {/* Editor Modal */}
+            {editingNode && config && (
+                <ConfigEditor
+                    node={editingNode}
+                    fullConfig={config}
+                    availableCookies={availableCookies}
+                    onSave={handleNodeSave}
+                    onClose={() => setEditingNode(null)}
+                />
+            )}
         </div>
     );
 }

@@ -31,7 +31,7 @@ export async function GET(
         const { finder } = params;
 
         // Proxy request to internal API
-        const response = await fetch(`${INTERNAL_API_URL}/api/cookie/${finder}`, {
+        const response = await fetch(`${INTERNAL_API_URL}/api/cookies/${finder}`, {
             headers: {
                 'Authorization': `Bearer ${API_SECRET}`,
                 'x-bypass-waf': WAF_BYPASS_HEADER
