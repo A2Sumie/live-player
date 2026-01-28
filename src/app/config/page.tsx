@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/middleware/WithAuth';
 import ConfigNode from './components/ConfigNode';
 import ConfigEditor from './components/ConfigEditor';
+import ReviewModal from './components/ReviewModal';
 import { AppConfig, VisualNode, VisualConnection, NodeType, Crawler, Forwarder, ForwardTarget } from './types';
 import _ from 'lodash';
 
@@ -14,20 +15,24 @@ export default function ConfigPage() {
 
     // State
     const [config, setConfig] = useState<AppConfig | null>(null);
+    const [originalConfig, setOriginalConfig] = useState<AppConfig | null>(null);
+    const [hasChanges, setHasChanges] = useState(false);
     const [nodes, setNodes] = useState<VisualNode[]>([]);
     const [connections, setConnections] = useState<VisualConnection[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [status, setStatus] = useState<string | null>(null);
     const [showDebug, setShowDebug] = useState(false);
+    const [showReview, setShowReview] = useState(false);
 
     // Editor State
     const [editingNode, setEditingNode] = useState<VisualNode | null>(null);
     const [restarting, setRestarting] = useState(false);
 
-    // Drag Connection State
+    // Connection State (Drag & Click)
     const [isDragging, setIsDragging] = useState(false);
     const [dragSource, setDragSource] = useState<string | null>(null);
+    const [connectingSource, setConnectingSource] = useState<string | null>(null); // For Click-to-Connect
     const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -68,6 +73,8 @@ export default function ConfigPage() {
 
             const configData = await configRes.json() as AppConfig;
             setConfig(configData);
+            setOriginalConfig(_.cloneDeep(configData));
+            setHasChanges(false);
             processGraph(configData);
 
             if (cookiesRes.ok) {
@@ -355,9 +362,10 @@ export default function ConfigPage() {
         setConfig(newConfig);
         processGraph(newConfig);
         setEditingNode(null);
+        setHasChanges(true);
 
-        // Auto-save to backend
-        saveConfigToBackend(newConfig);
+        // Auto-save to backend -> DISABLED for manual review
+        // saveConfigToBackend(newConfig);
     };
 
     // Drag-to-Connect Handlers
@@ -381,27 +389,48 @@ export default function ConfigPage() {
     };
 
     const handleConnectionEnd = (nodeId: string, side: 'input') => {
-        if (!dragSource || dragSource === nodeId) {
+        const sourceId = dragSource || connectingSource;
+
+        if (!sourceId || sourceId === nodeId) {
             setIsDragging(false);
             setDragSource(null);
+            setConnectingSource(null);
             return;
         }
 
         // Validate connection
-        const sourceNode = nodes.find(n => n.id === dragSource);
+        const sourceNode = nodes.find(n => n.id === sourceId);
         const targetNode = nodes.find(n => n.id === nodeId);
 
         if (!isValidConnection(sourceNode, targetNode)) {
             alert('Invalid connection! Please follow: Crawler → Translator/Formatter, Translator → Formatter, Formatter → Target');
             setIsDragging(false);
             setDragSource(null);
+            setConnectingSource(null);
             return;
         }
 
         // Add new connection
-        addConnection(dragSource, nodeId);
+        addConnection(sourceId, nodeId);
         setIsDragging(false);
         setDragSource(null);
+        setConnectingSource(null);
+    };
+
+    const handleHandleClick = (nodeId: string, side: 'input' | 'output') => {
+        if (side === 'output') {
+            // Start connection
+            if (connectingSource === nodeId) {
+                setConnectingSource(null); // Deselect
+            } else {
+                setConnectingSource(nodeId);
+            }
+        } else if (side === 'input') {
+            // Complete connection if active
+            if (connectingSource) {
+                handleConnectionEnd(nodeId, 'input');
+            }
+        }
     };
 
     const addConnection = (sourceId: string, targetId: string) => {
@@ -456,7 +485,8 @@ export default function ConfigPage() {
         }
 
         setConfig(newConfig);
-        saveConfigToBackend(newConfig);
+        setHasChanges(true);
+        // saveConfigToBackend(newConfig);
     };
 
     const removeConnection = (connId: string) => {
@@ -484,7 +514,8 @@ export default function ConfigPage() {
         }
 
         setConfig(newConfig);
-        saveConfigToBackend(newConfig);
+        setHasChanges(true);
+        // saveConfigToBackend(newConfig);
     };
 
     const addNewFormatter = () => {
@@ -502,7 +533,8 @@ export default function ConfigPage() {
 
         setConfig(newConfig);
         processGraph(newConfig);
-        saveConfigToBackend(newConfig);
+        setHasChanges(true);
+        // saveConfigToBackend(newConfig);
     };
 
     const addNewTarget = () => {
@@ -520,7 +552,8 @@ export default function ConfigPage() {
 
         setConfig(newConfig);
         processGraph(newConfig);
-        saveConfigToBackend(newConfig);
+        setHasChanges(true);
+        // saveConfigToBackend(newConfig);
     };
 
     const saveConfigToBackend = async (configToSave: AppConfig) => {
@@ -581,8 +614,21 @@ export default function ConfigPage() {
                             {status}
                         </span>
                     )}
+                    {hasChanges && (
+                        <span className="text-xs px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 animate-pulse font-bold">
+                            ● Unsaved Changes
+                        </span>
+                    )}
                 </div>
                 <div className="flex gap-3">
+                    {config && hasChanges && (
+                        <button
+                            onClick={() => setShowReview(true)}
+                            className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white rounded font-bold shadow-lg shadow-green-900/20 transition-all flex items-center gap-2"
+                        >
+                            <span>💾</span> Save Changes
+                        </button>
+                    )}
                     <button
                         onClick={() => setShowDebug(!showDebug)}
                         className={`px-3 py-1 rounded text-sm transition-colors ${showDebug ? 'bg-purple-600 text-white' : 'bg-white/5 hover:bg-white/10'}`}
@@ -594,7 +640,7 @@ export default function ConfigPage() {
                         className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded text-sm transition-colors"
                         disabled={loading}
                     >
-                        Refresh
+                        {hasChanges ? 'Discard & Refresh' : 'Refresh'}
                     </button>
                     <button
                         onClick={handleRestart}
@@ -624,6 +670,12 @@ export default function ConfigPage() {
                     if (isDragging) {
                         setIsDragging(false);
                         setDragSource(null);
+                        setConnectingSource(null);
+                    }
+                }}
+                onClick={() => {
+                    if (connectingSource) {
+                        setConnectingSource(null); // Click background to cancel connection
                     }
                 }}
             >
@@ -722,7 +774,9 @@ export default function ConfigPage() {
                             onClick={(n) => setEditingNode(n)}
                             onConnectionStart={handleConnectionStart}
                             onConnectionEnd={handleConnectionEnd}
-                            isConnecting={isDragging}
+                            onHandleClick={handleHandleClick}
+                            isConnecting={isDragging || !!connectingSource}
+                            isConnectingSource={connectingSource === node.id}
                         />
                     ))}
 
@@ -755,6 +809,21 @@ export default function ConfigPage() {
                     availableCookies={availableCookies}
                     onSave={handleNodeSave}
                     onClose={() => setEditingNode(null)}
+                />
+            )}
+
+            {/* Review Modal */}
+            {showReview && config && originalConfig && (
+                <ReviewModal
+                    originalConfig={originalConfig}
+                    newConfig={config}
+                    onCancel={() => setShowReview(false)}
+                    onConfirm={() => {
+                        saveConfigToBackend(config);
+                        setShowReview(false);
+                        setHasChanges(false);
+                        setOriginalConfig(_.cloneDeep(config));
+                    }}
                 />
             )}
         </div>
