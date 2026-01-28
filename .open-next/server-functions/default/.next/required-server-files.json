@@ -215,10 +215,6 @@
       "browserDebugInfoInTerminal": false,
       "optimizeRouterScrolling": false,
       "middlewareClientMaxBodySize": 10485760,
-      "serverComponentsExternalPackages": [
-        "drizzle-orm",
-        "drizzle-kit"
-      ],
       "optimizePackageImports": [
         "lucide-react",
         "date-fns",

@@ -6,31 +6,21 @@ interface ConfigNodeProps {
 }
 
 export default function ConfigNode({ node, onClick }: ConfigNodeProps) {
-    const getNodeColor = (type: string) => {
+    const getNodeStyle = (type: string) => {
+        const baseStyle = 'border-l-4 shadow-lg backdrop-blur-sm bg-gray-900/90 transition-all hover:-translate-y-1 hover:shadow-xl';
         switch (type) {
-            case 'crawler': return 'border-blue-500 bg-blue-500/10 hover:bg-blue-500/20';
-            case 'translator': return 'border-purple-500 bg-purple-500/10 hover:bg-purple-500/20';
-            case 'forwarder': return 'border-orange-500 bg-orange-500/10 hover:bg-orange-500/20';
-            case 'formatter': return 'border-pink-500 bg-pink-500/10 hover:bg-pink-500/20';
-            case 'target': return 'border-green-500 bg-green-500/10 hover:bg-green-500/20';
-            default: return 'border-gray-500';
-        }
-    };
-
-    const getIcon = (type: string) => {
-        switch (type) {
-            case 'crawler': return '🕷️';
-            case 'translator': return '🌐';
-            case 'forwarder': return '⏩';
-            case 'formatter': return '🎨';
-            case 'target': return '🎯';
-            default: return '📦';
+            case 'crawler': return `${baseStyle} border-blue-500 shadow-blue-900/20`;
+            case 'translator': return `${baseStyle} border-purple-500 shadow-purple-900/20`;
+            case 'forwarder': return `${baseStyle} border-orange-500 shadow-orange-900/20`;
+            case 'formatter': return `${baseStyle} border-pink-500 shadow-pink-900/20`;
+            case 'target': return `${baseStyle} border-green-500 shadow-green-900/20`;
+            default: return `${baseStyle} border-gray-500`;
         }
     };
 
     return (
         <div
-            className={`absolute flex flex-col justify-center items-center p-4 rounded-xl border-2 cursor-pointer transition-all shadow-lg backdrop-blur-sm ${getNodeColor(node.type)}`}
+            className={`absolute flex flex-col justify-center items-start p-3 rounded-r-lg cursor-pointer ${getNodeStyle(node.type)}`}
             style={{
                 left: node.x,
                 top: node.y,
@@ -39,11 +29,10 @@ export default function ConfigNode({ node, onClick }: ConfigNodeProps) {
             }}
             onClick={() => onClick(node)}
         >
-            <div className="text-2xl mb-2">{getIcon(node.type)}</div>
-            <div className="text-white font-bold text-center text-sm w-full px-2 break-words whitespace-normal leading-tight" title={node.label}>
+            <div className="text-white font-bold text-sm w-full break-words whitespace-normal leading-snug mb-1" title={node.label}>
                 {node.label}
             </div>
-            <div className="text-white/40 text-xs mt-1 uppercase tracking-wider">
+            <div className="text-xs text-white/40 uppercase tracking-widest font-mono">
                 {node.type}
             </div>
 
@@ -53,9 +42,14 @@ export default function ConfigNode({ node, onClick }: ConfigNodeProps) {
             )}
 
             {/* Schedule indicator for crawlers/forwarders */}
-            {(node.type === 'crawler' || node.type === 'forwarder') && node.data?.cfg?.cron && (
-                <div className="absolute bottom-2 right-2 text-[10px] text-white/50 font-mono">
-                    ⏰
+            {(node.type === 'crawler' || node.type === 'forwarder') && node.data?.cfg_crawler?.cron && (
+                <div className="absolute bottom-2 right-2 text-[10px] text-white/50 font-mono bg-white/10 px-1 rounded">
+                    {node.data?.cfg_crawler?.cron}
+                </div>
+            )}
+            {(node.type === 'crawler' || node.type === 'forwarder') && node.data?.cfg_forwarder?.cron && (
+                <div className="absolute bottom-2 right-2 text-[10px] text-white/50 font-mono bg-white/10 px-1 rounded">
+                    {node.data?.cfg_forwarder?.cron}
                 </div>
             )}
         </div>

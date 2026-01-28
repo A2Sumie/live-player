@@ -114,12 +114,6 @@
       "namedRegex": "^/cookies(?:/)?$"
     },
     {
-      "page": "/cookies/view",
-      "regex": "^/cookies/view(?:/)?$",
-      "routeKeys": {},
-      "namedRegex": "^/cookies/view(?:/)?$"
-    },
-    {
       "page": "/favicon.ico",
       "regex": "^/favicon\\.ico(?:/)?$",
       "routeKeys": {},
