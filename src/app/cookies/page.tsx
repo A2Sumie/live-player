@@ -39,10 +39,11 @@ export default function CookieManagerPage() {
 
     // Editor State
     const [editorFinder, setEditorFinder] = useState('');
-    const [editorSecret, setEditorSecret] = useState('');
+    // const [editorSecret, setEditorSecret] = useState(''); // Removed: Handled by proxy
     const [editorContent, setEditorContent] = useState('');
     const [editorStatus, setEditorStatus] = useState<string | null>(null);
     const [editorLoading, setEditorLoading] = useState(false);
+    const [restarting, setRestarting] = useState(false);
 
     // Selection & Delete State
     const [selectedCookies, setSelectedCookies] = useState<Set<string>>(new Set());
@@ -103,6 +104,25 @@ export default function CookieManagerPage() {
         }
     };
 
+    const handleRestart = async () => {
+        if (!confirm('Are you sure you want to restart the service? This may interrupt active tasks.')) return;
+        setRestarting(true);
+        try {
+            const res = await fetch('/api/server/restart', { method: 'POST' });
+            if (res.ok) {
+                alert('Service restart triggered successfully.');
+            } else {
+                const text = await res.text();
+                alert(`Failed to restart service: ${text}`);
+            }
+        } catch (error) {
+            console.error('Restart failed:', error);
+            alert('Failed to trigger restart.');
+        } finally {
+            setRestarting(false);
+        }
+    };
+
     const handleCreate = () => {
         setEditorFinder('');
         setEditorContent('');
@@ -139,7 +159,7 @@ export default function CookieManagerPage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${editorSecret}`
+                    // 'Authorization': `Bearer ${editorSecret}` // Removed: Handled by proxy
                 },
                 body: JSON.stringify({
                     finder: editorFinder,
@@ -246,6 +266,14 @@ export default function CookieManagerPage() {
                             </div>
                         </div>
                         <div className="flex gap-2">
+                            <button
+                                onClick={handleRestart}
+                                disabled={restarting}
+                                className={`px-4 py-2 text-white rounded-lg transition-colors flex items-center gap-2 font-medium ${restarting ? 'bg-orange-600/50 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 shadow-lg shadow-orange-900/50'
+                                    }`}
+                            >
+                                {restarting ? 'Restarting...' : '↻ Restart Service'}
+                            </button>
                             {viewMode === 'list' && selectedCookies.size > 0 && (
                                 <button
                                     onClick={handleBulkDelete}
@@ -408,19 +436,7 @@ export default function CookieManagerPage() {
                                     <p className="mt-1 text-xs text-white/40">This will determine the filename (e.g., twitter.txt)</p>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-white/80 mb-1">
-                                        API Secret
-                                    </label>
-                                    <input
-                                        type="password"
-                                        required
-                                        className="w-full px-4 py-2 bg-black/30 border border-white/10 rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        placeholder="Enter server API secret to authorize"
-                                        value={editorSecret}
-                                        onChange={(e) => setEditorSecret(e.target.value)}
-                                    />
-                                </div>
+                                {/* API Secret Input Removed */}
 
                                 {/* Used By Section */}
                                 {editorFinder && (
