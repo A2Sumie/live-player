@@ -79,8 +79,12 @@ export default function ConfigPage() {
         const newNodes: VisualNode[] = [];
         const newConnections: VisualConnection[] = [];
 
-        // 1. Crawlers (Layer 0)
+        // 0. Pre-fetch lists
         const crawlers = data.crawlers || [];
+        const forwarders = data.forwarders || [];
+        const targets = data.forward_targets || [];
+
+        // 1. Crawlers (Layer 0)
         crawlers.forEach((crawler, i) => {
             const nodeId = `crawler-${i}`;
 
@@ -116,7 +120,7 @@ export default function ConfigPage() {
                     target: translatorId
                 });
             }
-        });
+        }
 
         // Connect to Forwarders
         // Logic: If forwarder filters websites matching crawler websites, or just implicit left-right for now.
@@ -136,7 +140,6 @@ export default function ConfigPage() {
     });
 
     // 3. Forwarders (Layer 2)
-    const forwarders = data.forwarders || [];
     forwarders.forEach((forwarder, i) => {
         const forwarderId = `forwarder-${i}`;
         const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
@@ -193,7 +196,6 @@ export default function ConfigPage() {
     });
 
     // 5. Targets (Layer 4)
-    const targets = data.forward_targets || [];
     targets.forEach((target, i) => {
         const targetId = `target-${i}`;
         const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
