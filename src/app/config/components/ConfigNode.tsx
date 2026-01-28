@@ -58,7 +58,7 @@ export default function ConfigNode({ node, onClick, onConnectionStart, onConnect
 
             {/* Connection Handles */}
             {/* Output handle (right side) - for source connections */}
-            {(node.type === 'crawler' || node.type === 'translator' || node.type === 'formatter') && (
+            {(node.type === 'crawler' || node.type === 'translator' || node.type === 'formatter' || node.type === 'forwarder') && (
                 <div
                     className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-white/20 border-2 border-white/40 cursor-pointer hover:bg-white/40 hover:scale-125 transition-all z-10"
                     onMouseDown={(e) => {

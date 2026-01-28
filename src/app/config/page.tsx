@@ -87,6 +87,7 @@ export default function ConfigPage() {
 
         // Get all data
         const crawlers = data.crawlers || [];
+        const forwarders = data.forwarders || [];
         const translators = data.translators || [];
         const formatters = data.formatters || [];
         const targets = data.forward_targets || [];
@@ -107,6 +108,22 @@ export default function ConfigPage() {
                 data: crawler,
                 x: 0 * (LAYER_WIDTH + LAYER_GAP) + 50,
                 y: i * (NODE_HEIGHT + NODE_GAP) + 100,
+                width: LAYER_WIDTH,
+                height: NODE_HEIGHT
+            });
+        });
+
+        // Layer 0.5: Forwarders (Independent)
+        forwarders.forEach((forwarder, i) => {
+            const nodeId = getNodeId('forwarder', i, forwarder.id);
+
+            newNodes.push({
+                id: nodeId,
+                type: 'forwarder',
+                label: forwarder.name || `Forwarder ${i + 1}`,
+                data: forwarder,
+                x: 0 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                y: (crawlers.length + i) * (NODE_HEIGHT + NODE_GAP) + 120, // Offset below crawlers
                 width: LAYER_WIDTH,
                 height: NODE_HEIGHT
             });
@@ -245,6 +262,20 @@ export default function ConfigPage() {
             });
         });
 
+        // Forwarder -> Target connections
+        Object.entries(connMap['forwarder-target'] || {}).forEach(([forwarderId, targetIds]) => {
+            targetIds.forEach(targetId => {
+                newConnections.push({
+                    id: `conn-ft-direct-${forwarderId}-${targetId}`,
+                    source: forwarderId,
+                    target: targetId,
+                    type: 'forwarder-target' as any
+                });
+            });
+        });
+
+
+
         setNodes(newNodes);
         setConnections(newConnections);
     };
@@ -299,9 +330,17 @@ export default function ConfigPage() {
                 newConfig.formatters.push(newData);
             }
         } else if (type === 'forwarder') {
-            const forwarderIndex = parseInt(idParts[1]);
-            if (newConfig.forwarders && newConfig.forwarders[forwarderIndex]) {
+            const forwarderIndex = newConfig.forwarders?.findIndex(f =>
+                f.id === node.data.id || newConfig.forwarders?.indexOf(f) === parseInt(idParts[1])
+            );
+            if (forwarderIndex !== undefined && forwarderIndex >= 0 && newConfig.forwarders) {
                 newConfig.forwarders[forwarderIndex] = newData as Forwarder;
+            } else if (newConfig.forwarders) {
+                // Fallback by index if id not found
+                const idx = parseInt(idParts[1]);
+                if (newConfig.forwarders[idx]) {
+                    newConfig.forwarders[idx] = newData as Forwarder;
+                }
             }
         } else if (type === 'target') {
             // Find target by ID
@@ -329,7 +368,8 @@ export default function ConfigPage() {
         const validConnections: Record<string, string[]> = {
             'crawler': ['translator', 'formatter'],
             'translator': ['formatter'],
-            'formatter': ['target']
+            'formatter': ['target'],
+            'forwarder': ['target']
         };
 
         return validConnections[sourceNode.type]?.includes(targetNode.type) || false;
@@ -407,7 +447,12 @@ export default function ConfigPage() {
         } else if (connType === 'formatter-target') {
             if (!newConfig.connections['formatter-target']) newConfig.connections['formatter-target'] = {};
             if (!newConfig.connections['formatter-target'][sourceId]) newConfig.connections['formatter-target'][sourceId] = [];
+            if (!newConfig.connections['formatter-target'][sourceId]) newConfig.connections['formatter-target'][sourceId] = [];
             newConfig.connections['formatter-target'][sourceId].push(targetId);
+        } else if (connType === 'forwarder-target') {
+            if (!newConfig.connections['forwarder-target']) newConfig.connections['forwarder-target'] = {};
+            if (!newConfig.connections['forwarder-target'][sourceId]) newConfig.connections['forwarder-target'][sourceId] = [];
+            newConfig.connections['forwarder-target'][sourceId].push(targetId);
         }
 
         setConfig(newConfig);
@@ -613,7 +658,8 @@ export default function ConfigPage() {
                             const color = conn.type === 'crawler-translator' ? '#8b5cf6' :
                                 conn.type === 'translator-formatter' ? '#ec4899' :
                                     conn.type === 'crawler-formatter' ? '#f59e0b' :
-                                        conn.type === 'formatter-target' ? '#10b981' : '#6b7280';
+                                        conn.type === 'formatter-target' ? '#10b981' :
+                                            conn.type === 'forwarder-target' ? '#c026d3' : '#6b7280';
 
                             return (
                                 <g key={conn.id}>

@@ -52,6 +52,7 @@ export interface Translator {
 }
 
 export interface Forwarder {
+    id?: string;
     name?: string;
     websites?: Array<string>;
     origin?: string;
@@ -117,4 +118,5 @@ export interface ConnectionMap {
     'translator-formatter'?: Record<string, string[]>; // translator id -> formatter ids
     'crawler-formatter'?: Record<string, string[]>;  // crawler id -> formatter ids (direct)
     'formatter-target'?: Record<string, string[]>;   // formatter id -> target ids
+    'forwarder-target'?: Record<string, string[]>;   // forwarder id -> target ids
 }

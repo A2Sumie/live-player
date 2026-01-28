@@ -30,7 +30,11 @@ async function seedAdmins() {
 
         console.log(`✅ Default admin "${adminUser}" created`);
     } else {
-        console.log('ℹ️ Admin "sumie" already exists, skipping');
+        const passwordHash = await bcrypt.hash(adminPass, 10);
+        await db.update(admins)
+            .set({ passwordHash: passwordHash, isActive: true })
+            .where(eq(admins.username, adminUser));
+        console.log(`ℹ️ Admin "${adminUser}" already exists, updated password from environment`);
     }
 
     console.log('✅ Seeding complete!');
