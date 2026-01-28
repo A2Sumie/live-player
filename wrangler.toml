@@ -39,3 +39,11 @@ database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
 # binding = "DB"
 # database_name = "live-player"
 # database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
+
+# 环境变量配置 (Workers 环境)
+# 非敏感信息
+[vars]
+INTERNAL_API_URL = "https://idol-bbq-internal.n2nj.moe"
+
+# 敏感信息通过 wrangler secret 设置：
+# echo "值" | npx wrangler secret put SECRET_NAME
