@@ -171,6 +171,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
 
             if (!updatedData.cfg_forwarder) updatedData.cfg_forwarder = {};
             updatedData.cfg_forwarder.cron = formData.cron;
+            updatedData.cfg_forwarder.render_type = formData.render_type;
 
             if (!updatedData.cfg_forward_target) updatedData.cfg_forward_target = {};
             updatedData.cfg_forward_target.accept_keywords = splitLines(formData.accept_keywords);
