@@ -5,11 +5,17 @@ import bcrypt from 'bcryptjs';
 import { getDb, admins } from './db';
 import { eq } from 'drizzle-orm';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// 严格要求环境变量配置，无默认值
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+if (!process.env.ADMIN_ACCOUNT || !process.env.ADMIN_PASSWORD) {
+  throw new Error('ADMIN_ACCOUNT and ADMIN_PASSWORD environment variables are required');
+}
 
-// 保留环境变量支持作为后备方案
-const ADMIN_ACCOUNT = process.env.ADMIN_ACCOUNT || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+const JWT_SECRET: string = process.env.JWT_SECRET;
+const ADMIN_ACCOUNT: string = process.env.ADMIN_ACCOUNT;
+const ADMIN_PASSWORD: string = process.env.ADMIN_PASSWORD;
 
 export interface JWTPayload {
   username: string;
