@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import type { Player } from '@/lib/db';
 import Artplayer from "artplayer";
-import type { Option } from "artplayer/types/option";
+import type { Option } from "artplayer";
 import Hls from "hls.js";
 import artplayerPluginHlsControl from 'artplayer-plugin-hls-control';
 
@@ -17,7 +17,7 @@ function _Artplayer({
   getInstance?: (art: Artplayer) => void;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const artRef = useRef<HTMLDivElement | null>(null);
-  
+
   const playM3u8 = useCallback(
     (video: HTMLVideoElement, url: string, art: Artplayer) => {
       if (Hls.isSupported()) {
@@ -66,20 +66,20 @@ function _Artplayer({
             auto: 'Auto',
           },
           audio: {
-              // Show audios in control
-              control: true,
-              // Show audios in setting
-              setting: true,
-              // Get the audio name from track
-              getName: (track: any) => track.name,
-              // I18n
-              title: 'Audio',
-              auto: 'Auto',
+            // Show audios in control
+            control: true,
+            // Show audios in setting
+            setting: true,
+            // Get the audio name from track
+            getName: (track: any) => track.name,
+            // I18n
+            title: 'Audio',
+            auto: 'Auto',
           }
         })
       ]
     });
-    
+
     if (getInstance && typeof getInstance === "function") {
       getInstance(art);
     }
@@ -102,12 +102,12 @@ interface PlayerProps {
 
 export default function PlayerComponent({ player }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
-  
+
   // Determine poster image source - convert binary data to base64 on client side
   const getPosterImageSrc = () => {
     if (player.coverImage) {
       // Handle both ArrayBuffer (from SSR) and Array (from API)
-      const uint8Array = Array.isArray(player.coverImage) 
+      const uint8Array = Array.isArray(player.coverImage)
         ? new Uint8Array(player.coverImage)
         : new Uint8Array(player.coverImage as ArrayBuffer);
       const base64 = btoa(String.fromCharCode(...uint8Array));
@@ -153,8 +153,8 @@ export default function PlayerComponent({ player }: PlayerProps) {
       <header className="bg-gray-900 text-white p-4 z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Link 
-              href="/" 
+            <Link
+              href="/"
               className="text-blue-400 hover:text-blue-300 transition-colors"
             >
               ← Home
