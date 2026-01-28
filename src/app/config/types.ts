@@ -1,10 +1,13 @@
 export interface AppConfig {
     crawlers?: Array<Crawler>;
     cfg_crawler?: CrawlerConfig;
+    translators?: Array<Translator>; // Independent translators
+    formatters?: Array<Formatter>;   // Independent formatters
     forward_targets?: Array<ForwardTarget>;
     cfg_forward_target?: ForwardTargetPlatformCommonConfig;
     forwarders?: Array<Forwarder>;
     cfg_forwarder?: ForwarderConfig;
+    connections?: ConnectionMap;     // Visual connection mapping
     api?: {
         port?: number;
         secret?: string;
@@ -29,12 +32,15 @@ export interface CrawlerConfig {
     };
     immediate_notify?: boolean;
     user_agent?: string;
-    translator?: Translator;
+    translator?: Translator; // Legacy: kept for backward compatibility
+    translator_id?: string;  // New: reference to independent translator
     engine?: string;
     sub_task_type?: Array<string>;
 }
 
 export interface Translator {
+    id?: string;  // Unique identifier when used as independent config
+    name?: string; // Display name
     provider: string; // 'Google' | 'BigModel' | 'ByteDance' | 'Deepseek' | 'Openai' | 'QwenMT' | 'None'
     api_key: string;
     cfg_translator?: {
@@ -61,13 +67,20 @@ export interface Forwarder {
 export interface ForwarderConfig {
     cron?: string;
     media?: any;
-    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | string;
+    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | string; // Legacy
+    formatter_id?: string; // New: reference to independent formatter
 }
 
 export interface ForwardTarget {
     platform: string; // 'telegram' | 'bilibili' | 'qq' | 'none'
     id?: string;
     cfg_platform: any; // Simplified for now
+}
+
+export interface Formatter {
+    id?: string;  // Auto-generated or user-defined
+    name?: string;
+    render_type: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary';
 }
 
 export interface ForwardTargetPlatformCommonConfig {
@@ -96,4 +109,12 @@ export interface VisualConnection {
     id: string;
     source: string;
     target: string;
+    type?: 'crawler-translator' | 'translator-formatter' | 'crawler-formatter' | 'formatter-target'; // For validation
+}
+
+export interface ConnectionMap {
+    'crawler-translator'?: Record<string, string>;   // crawler id -> translator id
+    'translator-formatter'?: Record<string, string[]>; // translator id -> formatter ids
+    'crawler-formatter'?: Record<string, string[]>;  // crawler id -> formatter ids (direct)
+    'formatter-target'?: Record<string, string[]>;   // formatter id -> target ids
 }
