@@ -1,9 +1,22 @@
 import { getDb, admins } from './src/lib/db';
+import * as schema from './src/lib/db/schema';
+import { drizzle } from 'drizzle-orm/d1';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
 async function seedAdmins() {
-    const db = getDb();
+    let db;
+    try {
+        db = getDb();
+        // Test access
+        try { await db.select().from(admins).limit(1); } catch { throw new Error('Context missing'); }
+    } catch (e) {
+        console.log("⚠️ Standard getDb failed (likely local script), trying Wrangler Platform Proxy...");
+        const { getPlatformProxy } = await import('wrangler');
+        const { env } = await getPlatformProxy();
+        if (!env.DB) throw new Error('DB binding not found in Wrangler proxy');
+        db = drizzle(env.DB as any, { schema });
+    }
 
     console.log('🌱 Seeding admins table...');
 
