@@ -422,6 +422,36 @@ export default function CookieManagerPage() {
                                     />
                                 </div>
 
+                                {/* Used By Section */}
+                                {editorFinder && (
+                                    <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <h3 className="text-sm font-bold text-blue-300">Used By</h3>
+                                        </div>
+                                        {(() => {
+                                            const matchingCookie = cookies.find(c => c.name === editorFinder || c.filename.includes(editorFinder));
+                                            const usedBy = matchingCookie ? getUsedBy(matchingCookie) : [];
+
+                                            if (usedBy.length === 0) {
+                                                return <p className="text-sm text-white/60">This cookie is not currently used by any crawler.</p>;
+                                            }
+                                            return (
+                                                <div className="space-y-1">
+                                                    {usedBy.map((crawler, idx) => (
+                                                        <div key={idx} className="flex items-center gap-2 text-sm text-white/80 bg-white/5 px-2 py-1 rounded">
+                                                            <span className="text-green-400">✓</span>
+                                                            <span className="font-mono">{crawler.name || 'Unnamed Crawler'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-sm font-medium text-white/80 mb-1">
                                         Cookie Content (Netscape Format)
