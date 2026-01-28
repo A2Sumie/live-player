@@ -136,7 +136,7 @@ export default function CICPage() {
                             {showCreateForm ? '取消' : '+ 创建新日程'}
                         </button>
                         <a
-                            href="/cookies/view"
+                            href="/cookies"
                             className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition inline-flex items-center gap-2"
                         >
                             <span>🍪</span>
