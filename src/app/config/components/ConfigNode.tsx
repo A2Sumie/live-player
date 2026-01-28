@@ -5,10 +5,12 @@ interface ConfigNodeProps {
     onClick: (node: VisualNode) => void;
     onConnectionStart?: (nodeId: string, side: 'output') => void;
     onConnectionEnd?: (nodeId: string, side: 'input') => void;
+    onHandleClick?: (nodeId: string, side: 'input' | 'output') => void;
     isConnecting?: boolean;
+    isConnectingSource?: boolean;
 }
 
-export default function ConfigNode({ node, onClick, onConnectionStart, onConnectionEnd, isConnecting }: ConfigNodeProps) {
+export default function ConfigNode({ node, onClick, onConnectionStart, onConnectionEnd, onHandleClick, isConnecting, isConnectingSource }: ConfigNodeProps) {
     const getNodeStyle = (type: string) => {
         const baseStyle = 'border-l-4 shadow-lg backdrop-blur-sm bg-gray-900/90 transition-all hover:-translate-y-1 hover:shadow-xl';
         switch (type) {
@@ -60,30 +62,36 @@ export default function ConfigNode({ node, onClick, onConnectionStart, onConnect
             {/* Output handle (right side) - for source connections */}
             {(node.type === 'crawler' || node.type === 'translator' || node.type === 'formatter' || node.type === 'forwarder') && (
                 <div
-                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-white/20 border-2 border-white/40 cursor-pointer hover:bg-white/40 hover:scale-125 transition-all z-10"
+                    className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full border-2 cursor-pointer transition-all z-10 ${isConnectingSource
+                            ? 'bg-blue-500 border-blue-300 ring-2 ring-blue-500 ring-opacity-50 scale-125'
+                            : 'bg-white/20 border-white/40 hover:bg-white/40 hover:scale-125'
+                        }`}
                     onMouseDown={(e) => {
                         e.stopPropagation();
                         onConnectionStart?.(node.id, 'output');
                     }}
-                    title="Drag to connect"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onHandleClick?.(node.id, 'output');
+                    }}
+                    title="Drag or Click to connect"
                 />
             )}
 
             {/* Input handle (left side) - for target connections */}
             {(node.type === 'translator' || node.type === 'formatter' || node.type === 'target') && (
                 <div
-                    className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white/20 border-2 border-white/40 cursor-pointer hover:bg-white/40 hover:scale-125 transition-all z-10"
+                    className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 cursor-pointer transition-all z-10 ${isConnecting
+                            ? 'bg-green-500/50 border-green-400 animate-pulse hover:!bg-green-500 hover:scale-125'
+                            : 'bg-white/20 border-white/40 hover:bg-white/40 hover:scale-125'
+                        }`}
                     onMouseUp={(e) => {
                         e.stopPropagation();
                         onConnectionEnd?.(node.id, 'input');
                     }}
-                    onMouseEnter={(e) => {
-                        if (isConnecting) {
-                            (e.target as HTMLElement).classList.add('!bg-green-400', '!border-green-500');
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        (e.target as HTMLElement).classList.remove('!bg-green-400', '!border-green-500');
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onHandleClick?.(node.id, 'input');
                     }}
                     title="Connect here"
                 />
