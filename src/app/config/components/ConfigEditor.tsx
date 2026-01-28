@@ -322,7 +322,9 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 options={[
                                     { label: 'Text Only', value: 'text' },
                                     { label: 'Standard Image Card', value: 'img' },
-                                    { label: 'Image with Metadata', value: 'img-with-meta' }
+                                    { label: 'Image with Metadata', value: 'img-with-meta' },
+                                    { label: 'Image with Source Label', value: 'img-with-source' },
+                                    { label: 'Image with Source + Summary', value: 'img-with-source-summary' }
                                 ]}
                                 onChange={(v: string) => handleChange('render_type', v)}
                             />
@@ -336,16 +338,23 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
 
                     {/* Formatter Editor */}
                     {node.type === 'formatter' && (
-                        <FormSelect
-                            label="Format / Layout"
-                            value={formData.render_type}
-                            options={[
-                                { label: 'Text Only', value: 'text' },
-                                { label: 'Standard Image Card', value: 'img' },
-                                { label: 'Image with Metadata', value: 'img-with-meta' }
-                            ]}
-                            onChange={(v: string) => handleChange('render_type', v)}
-                        />
+                        <>
+                            <div className="mb-4 bg-pink-500/10 p-3 rounded border border-pink-500/30 text-xs text-pink-200">
+                                This formatter determines how content is rendered before sending to targets.
+                            </div>
+                            <FormSelect
+                                label="Format / Layout"
+                                value={formData.render_type}
+                                options={[
+                                    { label: 'Text Only', value: 'text' },
+                                    { label: 'Standard Image Card', value: 'img' },
+                                    { label: 'Image with Metadata', value: 'img-with-meta' },
+                                    { label: 'Image with Source Label', value: 'img-with-source' },
+                                    { label: 'Image with Source + Summary', value: 'img-with-source-summary' }
+                                ]}
+                                onChange={(v: string) => handleChange('render_type', v)}
+                            />
+                        </>
                     )}
 
                     {/* Target Editor */}
