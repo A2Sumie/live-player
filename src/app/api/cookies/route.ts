@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Internal API URL
-        const internalUrl = `${INTERNAL_API_URL}/api/cookie`
+        const internalUrl = `${INTERNAL_API_URL}/api/cookies`
 
         const response = await fetch(internalUrl, {
             method: 'POST',
