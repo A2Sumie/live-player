@@ -45,6 +45,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
         } else if (node.type === 'forwarder') {
             const data = node.data as Forwarder;
             setFormData({
+                id: data.id,
                 name: data.name,
                 task_type: data.task_type || 'article',
                 cron: data.cfg_forwarder?.cron || '',
@@ -168,6 +169,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             updatedData.cfg_translator.base_url = formData.base_url;
 
         } else if (node.type === 'forwarder') {
+            updatedData.id = formData.id || node.data.id;
             updatedData.name = formData.name;
             updatedData.task_type = formData.task_type;
             updatedData.task_title = formData.task_title;
@@ -311,9 +313,10 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                     {node.type === 'forwarder' && (
                         <>
                             <div className="grid grid-cols-2 gap-4">
+                                <FormInput label="ID (Optional)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="forwarder-1" />
                                 <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} />
-                                <FormInput label="Task Title" value={formData.task_title} onChange={(v: string) => handleChange('task_title', v)} />
                             </div>
+                            <FormInput label="Task Title" value={formData.task_title} onChange={(v: string) => handleChange('task_title', v)} />
                             <FormSelect
                                 label="Task Type"
                                 value={formData.task_type}
