@@ -52,7 +52,8 @@ export default function CookieViewPage() {
             }
 
             if (!response.ok) {
-                throw new Error('Failed to fetch cookies');
+                const errorData = await response.json().catch(() => ({ error: 'Failed to fetch cookies' })) as { error?: string };
+                throw new Error(errorData.error || 'Failed to fetch cookies');
             }
 
             const data = await response.json() as CookieFile[];
@@ -77,7 +78,8 @@ export default function CookieViewPage() {
             }
 
             if (!response.ok) {
-                throw new Error('Failed to fetch cookie details');
+                const errorData = await response.json().catch(() => ({ error: 'Failed to fetch cookie details' })) as { error?: string };
+                throw new Error(errorData.error || 'Failed to fetch cookie details');
             }
 
             const data = await response.json() as CookieDetail;

@@ -20,15 +20,15 @@
     "db:seed": "tsx seed.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.3.0",
+    "@opennextjs/cloudflare": "^1.16.0",
     "artplayer": "^5.2.5",
     "artplayer-plugin-hls-control": "^1.0.1",
     "bcryptjs": "^3.0.2",
-    "drizzle-kit": "^0.31.4",
+    "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.44.4",
     "hls.js": "^1.6.9",
     "jsonwebtoken": "^9.0.2",
-    "next": "15.3.5",
+    "next": "^15.5.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -33,8 +33,12 @@ export async function GET(req: NextRequest) {
         });
 
         if (!response.ok) {
-            console.error(`Internal API returned ${response.status} for /api/config/crawlers`);
-            throw new Error(`API returned ${response.status}`);
+            const errorText = await response.text();
+            console.error(`Internal API returned ${response.status} for /api/config/crawlers: ${errorText}`);
+            return NextResponse.json(
+                { error: `Upstream Error: ${response.statusText} - ${errorText}` },
+                { status: response.status }
+            );
         }
 
         const data = await response.json();
@@ -43,7 +47,7 @@ export async function GET(req: NextRequest) {
     } catch (error) {
         console.error('Proxy error for /api/config/crawlers:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch crawler config' },
+            { error: `Internal Proxy Error: ${error instanceof Error ? error.message : String(error)}` },
             { status: 500 }
         );
     }
