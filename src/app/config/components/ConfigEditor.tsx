@@ -46,6 +46,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 name: data.name,
                 task_type: data.task_type || 'article',
                 cron: data.cfg_forwarder?.cron || '',
+                render_type: data.cfg_forwarder?.render_type || 'text',
                 websites: data.websites ? data.websites.join('\n') : '',
                 origin: data.origin || '',
                 paths: data.paths ? data.paths.join('\n') : '',
@@ -313,7 +314,17 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                             <FormTextarea label="Paths (List ID)" value={formData.paths} onChange={(v: string) => handleChange('paths', v)} />
                             <FormTextarea label="Websites (Exact URL)" value={formData.websites} onChange={(v: string) => handleChange('websites', v)} />
 
-                            <h3 className="text-sm font-bold text-orange-300 border-b border-orange-500/30 pb-1 mt-4">Filtering</h3>
+                            <h3 className="text-sm font-bold text-orange-300 border-b border-orange-500/30 pb-1 mt-4">Formatter & Execution</h3>
+                            <FormSelect
+                                label="Render Type (Formatter)"
+                                value={formData.render_type}
+                                options={[
+                                    { label: 'Text Only', value: 'text' },
+                                    { label: 'Standard Image Card', value: 'img' },
+                                    { label: 'Image with Metadata', value: 'img-with-meta' }
+                                ]}
+                                onChange={(v: string) => handleChange('render_type', v)}
+                            />
                             <FormInput label="Execution Cron" value={formData.cron} onChange={(v: string) => handleChange('cron', v)} placeholder="* * * * *" />
                             <div className="grid grid-cols-2 gap-4">
                                 <FormTextarea label="Accept Keywords" value={formData.accept_keywords} onChange={(v: string) => handleChange('accept_keywords', v)} placeholder="One per line" fontMono />
