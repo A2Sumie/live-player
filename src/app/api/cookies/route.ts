@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_SECRET = process.env.INTERNAL_API_SECRET;
-const INTERNAL_API_URL = process.env.INTERNAL_API_URL;
-const WAF_BYPASS_HEADER = process.env.WAF_BYPASS_HEADER;
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
         const authHeader = req.headers.get('Authorization')
+
+        const API_SECRET = process.env.INTERNAL_API_SECRET;
+        const INTERNAL_API_URL = process.env.INTERNAL_API_URL;
+        const WAF_BYPASS_HEADER = process.env.WAF_BYPASS_HEADER;
 
         if (!API_SECRET || !INTERNAL_API_URL || !WAF_BYPASS_HEADER) {
             console.error('Missing environment variables for internal API');
