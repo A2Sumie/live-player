@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['drizzle-orm', 'drizzle-kit'],
   experimental: {
-    serverComponentsExternalPackages: ['drizzle-orm', 'drizzle-kit']
   },
   images: {
     remotePatterns: [

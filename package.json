@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.16.0",
+    "@types/lodash": "^4.17.23",
     "artplayer": "^5.2.5",
     "artplayer-plugin-hls-control": "^1.0.1",
     "bcryptjs": "^3.0.2",
@@ -28,6 +29,7 @@
     "drizzle-orm": "^0.44.4",
     "hls.js": "^1.6.9",
     "jsonwebtoken": "^9.0.2",
+    "lodash": "^4.17.23",
     "next": "^15.5.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
