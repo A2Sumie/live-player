@@ -15,8 +15,8 @@ export async function DELETE(req: NextRequest) {
     try {
         const body = await req.json();
 
-        const res = await fetch(`${apiUrl}/api/cookies`, {
-            method: 'DELETE',
+        const res = await fetch(`${apiUrl}/api/cookies/delete`, {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiSecret}`,
