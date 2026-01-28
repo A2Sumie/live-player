@@ -4,22 +4,25 @@ import { useAuth } from '@/middleware/WithAuth';
 // Use Edge Runtime for better performance if possible, but Node.js runtime is needed for environment variables usually
 // export const runtime = 'edge';
 
-export async function DELETE(req: NextRequest) {
-    const apiSecret = process.env.API_SECRET;
-    const apiUrl = process.env.API_URL || 'http://localhost:3000';
+export async function POST(req: NextRequest) {
+    const API_SECRET = process.env.INTERNAL_API_SECRET;
+    const INTERNAL_API_URL = process.env.INTERNAL_API_URL;
+    const WAF_BYPASS_HEADER = process.env.WAF_BYPASS_HEADER;
 
-    if (!apiSecret) {
-        return NextResponse.json({ error: 'Server misconfigured (missing API_SECRET)' }, { status: 500 });
+    if (!API_SECRET || !INTERNAL_API_URL || !WAF_BYPASS_HEADER) {
+        console.error('Missing environment variables for internal API');
+        return NextResponse.json({ error: 'Server misconfigured (missing env vars)' }, { status: 500 });
     }
 
     try {
         const body = await req.json();
 
-        const res = await fetch(`${apiUrl}/api/cookies/delete`, {
+        const res = await fetch(`${INTERNAL_API_URL}/api/cookies/delete`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiSecret}`,
+                'Authorization': `Bearer ${API_SECRET}`,
+                'x-bypass-waf': WAF_BYPASS_HEADER
             },
             body: JSON.stringify(body)
         });
@@ -31,9 +34,7 @@ export async function DELETE(req: NextRequest) {
         }
 
         const data = await res.json();
-        const response = NextResponse.json(data);
-        response.headers.set('x-bypass-waf', 'true');
-        return response;
+        return NextResponse.json(data);
 
     } catch (error) {
         console.error('DELETE proxy error:', error);
