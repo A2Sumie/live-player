@@ -32,8 +32,10 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 interval_max: data.cfg_crawler?.interval_time?.max || '',
             });
         } else if (node.type === 'translator') {
-            const data = node.data as Translator;
+            const data = node.data as any;
             setFormData({
+                id: data.id || '',
+                name: data.name || '',
                 provider: data.provider || 'Google',
                 api_key: data.api_key || '',
                 model_id: data.cfg_translator?.model_id || '',
@@ -57,6 +59,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             });
         } else if (node.type === 'formatter') {
             setFormData({
+                id: node.data.id || '',
+                name: node.data.name || '',
                 render_type: node.data.render_type || 'text',
             });
         } else if (node.type === 'target') {
@@ -154,6 +158,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             }
 
         } else if (node.type === 'translator') {
+            updatedData.id = formData.id || node.data.id;
+            updatedData.name = formData.name;
             updatedData.provider = formData.provider;
             updatedData.api_key = formData.api_key;
             if (!updatedData.cfg_translator) updatedData.cfg_translator = {};
@@ -178,6 +184,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             updatedData.cfg_forward_target.filter_keywords = splitLines(formData.filter_keywords);
 
         } else if (node.type === 'formatter') {
+            updatedData.id = formData.id || node.data.id;
+            updatedData.name = formData.name;
             updatedData.render_type = formData.render_type;
 
         } else if (node.type === 'target') {
@@ -279,8 +287,12 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                     {/* Translator / LLM Editor */}
                     {node.type === 'translator' && (
                         <>
-                            <div className="mb-4 bg-blue-500/10 p-3 rounded border border-blue-500/30 text-xs text-blue-200">
-                                This translator profile is attached to the crawler.
+                            <div className="mb-4 bg-purple-500/10 p-3 rounded border border-purple-500/30 text-xs text-purple-200">
+                                {node.data.id ? 'Independent translator node' : 'Legacy translator attached to crawler'}
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormInput label="ID (Auto-generated if empty)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="translator-1" />
+                                <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} placeholder="My Translator" />
                             </div>
                             <FormSelect
                                 label="Provider"
@@ -341,6 +353,10 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                         <>
                             <div className="mb-4 bg-pink-500/10 p-3 rounded border border-pink-500/30 text-xs text-pink-200">
                                 This formatter determines how content is rendered before sending to targets.
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormInput label="ID (Auto-generated if empty)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="formatter-1" />
+                                <FormInput label="Name (Optional)" value={formData.name} onChange={(v: string) => handleChange('name', v)} placeholder="My Formatter" />
                             </div>
                             <FormSelect
                                 label="Format / Layout"
