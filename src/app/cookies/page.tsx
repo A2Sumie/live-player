@@ -209,12 +209,14 @@ export default function CookieManagerPage() {
                 body: JSON.stringify({ filenames: Array.from(selectedCookies) })
             });
 
-            if (!res.ok) throw new Error('Delete failed');
+            const text = await res.text();
+            if (!res.ok) throw new Error(`Delete failed: ${res.status} - ${text}`);
 
             await fetchData(); // Refresh list
             setSelectedCookies(new Set()); // Clear selection
-        } catch (error) {
-            alert('Failed to delete cookies');
+        } catch (error: any) {
+            console.error('Delete error', error);
+            setError(`Failed to delete cookies: ${error.message}`);
         } finally {
             setDeleting(false);
         }
@@ -273,11 +275,17 @@ export default function CookieManagerPage() {
                     </div>
 
                     {error && (
-                        <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 flex justify-between items-center">
-                            <span>{error}</span>
-                            <button onClick={() => setError('')} className="ml-4 underline text-xs hover:text-white">
-                                Close
-                            </button>
+                        <div className="mb-6 space-y-2">
+                            <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 flex justify-between items-center">
+                                <span>{error}</span>
+                                <button onClick={() => setError('')} className="ml-4 underline text-xs hover:text-white">
+                                    Close
+                                </button>
+                            </div>
+                            <div className="p-2 bg-black/50 border border-white/10 rounded font-mono text-xs text-white/60">
+                                <strong>Debug Log:</strong>
+                                <pre className="whitespace-pre-wrap mt-1">{error}</pre>
+                            </div>
                         </div>
                     )}
 
