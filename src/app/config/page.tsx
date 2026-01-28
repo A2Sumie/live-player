@@ -79,16 +79,23 @@ export default function ConfigPage() {
         const newNodes: VisualNode[] = [];
         const newConnections: VisualConnection[] = [];
 
-        // 0. Pre-fetch lists
+        // Pre-fetch lists
         const crawlers = data.crawlers || [];
         const forwarders = data.forwarders || [];
         const targets = data.forward_targets || [];
 
-        // 1. Crawlers (Layer 0)
+        // Create unique formatters from forwarders (grouped by render_type)
+        const formatterTypes = new Set<string>();
+        forwarders.forEach(f => {
+            const renderType = f.cfg_forwarder?.render_type || 'text';
+            formatterTypes.add(renderType);
+        });
+        const formatters = Array.from(formatterTypes);
+
+        // Layer 0: Crawlers
         crawlers.forEach((crawler, i) => {
             const nodeId = `crawler-${i}`;
 
-            // Add Crawler Node
             newNodes.push({
                 id: nodeId,
                 type: 'crawler',
@@ -100,16 +107,16 @@ export default function ConfigPage() {
                 height: NODE_HEIGHT
             });
 
-            // 2. Translator (Layer 1) - Nested in Crawler
+            // Layer 1: LLM Processor (Translator) - if exists
             if (crawler.cfg_crawler?.translator) {
                 const translatorId = `translator-${i}`;
                 newNodes.push({
                     id: translatorId,
                     type: 'translator',
-                    label: `Translate (${crawler.cfg_crawler.translator.provider})`,
+                    label: `LLM Processor (${crawler.cfg_crawler.translator.provider})`,
                     data: crawler.cfg_crawler.translator,
                     x: 1 * (LAYER_WIDTH + LAYER_GAP) + 50,
-                    y: i * (NODE_HEIGHT + NODE_GAP) + 100, // Align with crawler
+                    y: i * (NODE_HEIGHT + NODE_GAP) + 100,
                     width: LAYER_WIDTH,
                     height: NODE_HEIGHT,
                     parentId: nodeId
@@ -120,82 +127,67 @@ export default function ConfigPage() {
                     target: translatorId
                 });
             }
-
-
-            // Connect to Forwarders
-            // Logic: If forwarder filters websites matching crawler websites, or just implicit left-right for now.
-            // Improved: Connect all crawlers to first forwarder visually if no logic, OR just leave disconnected?
-            // User requested connections. Let's connect Crawler -> Forwarder (generic) or simple 1-to-1 if index matches to show "flow".
-            // Let's do 1-to-1 connection based on index for visual flow if count matches, otherwise 0->0, 1->1, etc.
-            if (forwarders[i]) {
-                const forwarderId = `forwarder-${i}`;
-                const sourceId = crawler.cfg_crawler?.translator ? `translator-${i}` : nodeId;
-
-                newConnections.push({
-                    id: `conn-flow-${i}`,
-                    source: sourceId,
-                    target: forwarderId
-                });
-            }
         });
 
-        // 3. Forwarders (Layer 2)
-        forwarders.forEach((forwarder, i) => {
-            const forwarderId = `forwarder-${i}`;
+        // Layer 2: Formatters (independent nodes, one per unique render_type)
+        formatters.forEach((renderType, i) => {
+            const formatterId = `formatter-${i}`;
             const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
 
-            // Check if already exist (added by crawler loop logic? No, nodes are needed)
-            // Wait, we pushed nodes in previous loop? No, that was Crawlers loop.
-            // Warning: logic above accessed `forwarders[i]` inside `crawlers` loop to make connection. 
-            // We need to ensure Forwarder Nodes exist. 
-            // Better: Create all nodes first, then connections? 
-            // Original code created nodes in separate loops. 
+            const label = (() => {
+                switch (renderType) {
+                    case 'text': return 'Text Only';
+                    case 'img': return 'Image Card';
+                    case 'img-with-meta': return 'Image + Meta';
+                    case 'img-with-source': return 'Image + Source';
+                    case 'img-with-source-summary': return 'Image + Source + Summary';
+                    default: return renderType;
+                }
+            })();
 
             newNodes.push({
-                id: forwarderId,
-                type: 'forwarder',
-                label: forwarder.name || `Forwarder ${i + 1}`,
-                data: forwarder,
+                id: formatterId,
+                type: 'formatter',
+                label: label,
+                data: { render_type: renderType },
                 x: 2 * (LAYER_WIDTH + LAYER_GAP) + 50,
                 y: yPos,
                 width: LAYER_WIDTH,
                 height: NODE_HEIGHT
             });
 
-            // 4. Formatter (Layer 3) - Nested in Forwarder
-            const renderType = forwarder.cfg_forwarder?.render_type || 'text';
-            const formatterId = `formatter-${i}`;
-
-            newNodes.push({
-                id: formatterId,
-                type: 'formatter',
-                label: `Format: ${renderType}`,
-                data: forwarder.cfg_forwarder || {},
-                x: 3 * (LAYER_WIDTH + LAYER_GAP) + 50,
-                y: yPos,
-                width: LAYER_WIDTH,
-                height: NODE_HEIGHT,
-                parentId: forwarderId
-            });
-            newConnections.push({
-                id: `conn-f-fmt-${i}`,
-                source: forwarderId,
-                target: formatterId
-            });
-
-            // Connect Formatter -> Target (Layer 4)
-            // Logic: 1-to-1 match with Targets by index for visualization
-            if (data.forward_targets && data.forward_targets[i]) {
-                const targetId = `target-${i}`;
+            // Simple connection: Connect each formatter to corresponding targets (1:1 for now)
+            // TODO: Make this user-editable via drag-and-drop
+            if (targets[i]) {
                 newConnections.push({
                     id: `conn-fmt-t-${i}`,
                     source: formatterId,
-                    target: targetId
+                    target: `target-${i}`
                 });
             }
         });
 
-        // 5. Targets (Layer 4)
+        // Temporary: Connect crawlers/translators to formatters (1:1 mapping for initial version)
+        // TODO: Make this draggable
+        crawlers.forEach((crawler, i) => {
+            const sourceId = crawler.cfg_crawler?.translator ? `translator-${i}` : `crawler-${i}`;
+
+            // Find corresponding forwarder's formatter type
+            const forwarder = forwarders[i];
+            if (forwarder) {
+                const renderType = forwarder.cfg_forwarder?.render_type || 'text';
+                const formatterIndex = formatters.indexOf(renderType);
+                if (formatterIndex >= 0) {
+                    newConnections.push({
+                        id: `conn-src-fmt-${i}`,
+                        source: sourceId,
+                        target: `formatter-${formatterIndex}`
+                    });
+                }
+            }
+        });
+
+        // Layer 3: Targets
         targets.forEach((target, i) => {
             const targetId = `target-${i}`;
             const yPos = i * (NODE_HEIGHT + NODE_GAP) + 100;
@@ -205,7 +197,7 @@ export default function ConfigPage() {
                 type: 'target',
                 label: `${target.platform} (${target.id || 'Global'})`,
                 data: target,
-                x: 4 * (LAYER_WIDTH + LAYER_GAP) + 50,
+                x: 3 * (LAYER_WIDTH + LAYER_GAP) + 50,
                 y: yPos,
                 width: LAYER_WIDTH,
                 height: NODE_HEIGHT
@@ -241,11 +233,18 @@ export default function ConfigPage() {
                 newConfig.forwarders[index] = newData as Forwarder;
             }
         } else if (type === 'formatter') {
-            // Formatter is inside forwarder.
-            if (newConfig.forwarders && newConfig.forwarders[index]) {
-                if (!newConfig.forwarders[index].cfg_forwarder) newConfig.forwarders[index].cfg_forwarder = {};
-                // Updates to cfg_forwarder (render_type)
-                newConfig.forwarders[index].cfg_forwarder!.render_type = newData.render_type;
+            // Formatter is now independent, need to update all forwarders using this render_type
+            const oldRenderType = node.data.render_type;
+            const newRenderType = newData.render_type;
+
+            // Update all forwarders that use this formatter type
+            if (newConfig.forwarders) {
+                newConfig.forwarders.forEach(forwarder => {
+                    if (forwarder.cfg_forwarder?.render_type === oldRenderType) {
+                        if (!forwarder.cfg_forwarder) forwarder.cfg_forwarder = {};
+                        forwarder.cfg_forwarder.render_type = newRenderType;
+                    }
+                });
             }
         } else if (type === 'target') {
             if (newConfig.forward_targets && newConfig.forward_targets[index]) {

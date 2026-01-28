@@ -61,7 +61,7 @@ export interface Forwarder {
 export interface ForwarderConfig {
     cron?: string;
     media?: any;
-    render_type?: 'text' | 'img' | 'img-with-meta' | string; // Allow string for future
+    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | string;
 }
 
 export interface ForwardTarget {
