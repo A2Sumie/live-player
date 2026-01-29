@@ -97,7 +97,7 @@ export interface ForwardTargetPlatformCommonConfig {
     block_rules?: Array<any>;
 }
 
-export type NodeType = 'crawler' | 'translator' | 'forwarder' | 'formatter' | 'target';
+export type NodeType = 'crawler' | 'translator' | 'forwarder' | 'formatter' | 'target' | 'group';
 
 export interface VisualNode {
     id: string;
@@ -115,7 +115,8 @@ export interface VisualConnection {
     id: string;
     source: string;
     target: string;
-    type?: 'crawler-translator' | 'translator-formatter' | 'crawler-formatter' | 'formatter-target'; // For validation
+    type: string; // For validation/styling
+    isPartial?: boolean;
 }
 
 export interface ConnectionMap {

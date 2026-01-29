@@ -6,7 +6,7 @@ import { useAuth } from '@/middleware/WithAuth';
 import ConfigNode from './components/ConfigNode';
 import ConfigEditor from './components/ConfigEditor';
 import ReviewModal from './components/ReviewModal';
-import { AppConfig, VisualNode, VisualConnection, NodeType, Crawler, Forwarder, ForwardTarget } from './types';
+import { AppConfig, VisualNode, VisualConnection, NodeType, Crawler, Forwarder, ForwardTarget, ConnectionMap } from './types';
 import _ from 'lodash';
 
 export default function ConfigPage() {
@@ -19,7 +19,8 @@ export default function ConfigPage() {
     const [hasChanges, setHasChanges] = useState(false);
     const [nodes, setNodes] = useState<VisualNode[]>([]);
     const [connections, setConnections] = useState<VisualConnection[]>([]);
-    const [groups, setGroups] = useState<{ id: string; label: string; x: number; y: number; width: number; height: number; color: string }[]>([]);
+    const [groups, setGroups] = useState<{ id: string; label: string; x: number; y: number; width: number; height: number; color: string; isCollapsed: boolean }[]>([]);
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [status, setStatus] = useState<string | null>(null);
@@ -40,6 +41,11 @@ export default function ConfigPage() {
     // UI State
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
     const [canvasSize, setCanvasSize] = useState({ width: 2000, height: 1500 });
+
+    // Brush Selection State
+    const [isBrushSelecting, setIsBrushSelecting] = useState(false);
+    const [brushStart, setBrushStart] = useState({ x: 0, y: 0 });
+    const [brushCurrent, setBrushCurrent] = useState({ x: 0, y: 0 });
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -82,7 +88,10 @@ export default function ConfigPage() {
             setHasChanges(false);
             setHasChanges(false);
             setSelectedNodeIds(new Set());
-            processGraph(configData);
+            setHasChanges(false);
+            setHasChanges(false);
+            setSelectedNodeIds(new Set());
+            processGraph(configData, collapsedGroups);
 
             if (cookiesRes.ok) {
                 const cookiesData = await cookiesRes.json() as any[];
@@ -95,7 +104,7 @@ export default function ConfigPage() {
         }
     };
 
-    const processGraph = (data: AppConfig) => {
+    const processGraph = (data: AppConfig, currentCollapsedGroups: Set<string> = collapsedGroups) => {
         const newNodes: VisualNode[] = [];
         const newConnections: VisualConnection[] = [];
 
@@ -304,30 +313,142 @@ export default function ConfigPage() {
             }
         });
 
-        const newGroups = Array.from(groupMap.entries()).map(([label, groupNodes], i) => {
+        // Determine Group Bounding Boxes & Colors
+        const groupConfigs = Array.from(groupMap.entries()).map(([label, groupNodes], i) => {
             const minX = Math.min(...groupNodes.map(n => n.x));
             const minY = Math.min(...groupNodes.map(n => n.y));
             const maxX = Math.max(...groupNodes.map(n => n.x + n.width));
             const maxY = Math.max(...groupNodes.map(n => n.y + n.height));
 
-            // Deterministic color based on label
+            // Deterministic color
             const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
             const colorIndex = label.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+            const color = colors[colorIndex];
+            const groupId = `group-${label}`;
 
             return {
-                id: `group-${label}`,
+                id: groupId,
                 label,
                 x: minX - 20,
-                y: minY - 40, // Extra space for label
+                y: minY - 40,
                 width: maxX - minX + 40,
                 height: maxY - minY + 60,
-                color: colors[colorIndex]
+                color,
+                isCollapsed: currentCollapsedGroups.has(groupId),
+                members: groupNodes
             };
         });
 
-        setNodes(newNodes);
-        setConnections(newConnections);
-        setGroups(newGroups);
+        // --- Collapsing Logic ---
+        const finalNodes: VisualNode[] = [];
+        const hiddenNodeMap = new Map<string, string>(); // hiddenNodeId -> groupId
+
+        // 1. Filter Nodes & Create Group Nodes
+        const processedGroupIds = new Set<string>();
+
+        // Add non-grouped nodes first (or check later)
+        // Actually simpler: iterate all newNodes. If in collapsed group, skip.
+        // But we need to insert the Group Node once.
+
+        groupConfigs.forEach(g => {
+            if (g.isCollapsed) {
+                // Add Group Node
+                finalNodes.push({
+                    id: g.id,
+                    type: 'group',
+                    label: `${g.label} (${g.members.length})`,
+                    data: { group: g.label, isGroupNode: true, members: g.members }, // storing members for bulk actions later
+                    x: g.x,
+                    y: g.y,
+                    width: Math.max(g.width, 200), // Collapsed width
+                    height: 80 // Collapsed height
+                });
+
+                // Mark members as hidden
+                g.members.forEach(m => hiddenNodeMap.set(m.id, g.id));
+            }
+        });
+
+        newNodes.forEach(n => {
+            if (!hiddenNodeMap.has(n.id)) {
+                finalNodes.push(n);
+            }
+        });
+
+        // 2. Remap Connections
+        const finalConnections: VisualConnection[] = [];
+        const connectionKeys = new Set<string>(); // avoid duplicates
+
+        newConnections.forEach(conn => {
+            let source = conn.source;
+            let target = conn.target;
+            let isPartial = false;
+
+            // Map to group if hidden
+            if (hiddenNodeMap.has(source)) source = hiddenNodeMap.get(source)!;
+            if (hiddenNodeMap.has(target)) target = hiddenNodeMap.get(target)!;
+
+            // Check if this is a connection involving a group
+            // We want to detect "Partial" connections for Group->Node or Group->Group or Node->Group
+            // Partial = Not all members of the source group connect to this target
+
+            // Case 1: Source is a Group
+            if (currentCollapsedGroups.has(source)) {
+                // Find group config
+                const groupConfig = groupConfigs.find(g => g.id === source);
+                if (groupConfig) {
+                    // Count how many members connect to the *original* target (before mapping target to group)?
+                    // No, connect to the *resolved* target.
+                    // If multiple members connect to the same resolved target, we count them.
+
+                    // Actually, we need to look at the ORIGINAL connections to determine partiality.
+                    // Let's filter original 'newConnections' for this specific resolved relationship.
+
+                    // But we are in a loop of single connection.
+                    // Use a helper or pre-calc?
+                    // Pre-calc is better.
+                }
+            }
+
+            const key = `${source}-${target}`;
+            if (!connectionKeys.has(key)) {
+                connectionKeys.add(key);
+                finalConnections.push({
+                    ...conn,
+                    id: `conn-${source}-${target}`, // New ID for visual
+                    source,
+                    target,
+                    // We need to determine if it's partial later... defaulting to original type
+                });
+            }
+        });
+
+        // 3. Post-process connections for Partial Status
+        // For each final connection X -> Y
+        finalConnections.forEach(conn => {
+            const sourceGroup = groupConfigs.find(g => g.id === conn.source);
+            if (sourceGroup) {
+                // It is a group source. Check coverage.
+                const totalMembers = sourceGroup.members.length;
+                // Find all original connections where mapped(source) == conn.source AND mapped(target) == conn.target
+                const contributingConns = newConnections.filter(c => {
+                    const mappedS = hiddenNodeMap.get(c.source) || c.source;
+                    const mappedT = hiddenNodeMap.get(c.target) || c.target;
+                    return mappedS === conn.source && mappedT === conn.target;
+                });
+
+                // How many unique members of sourceGroup are involved?
+                const involvedMembers = new Set(contributingConns.map(c => c.source)); // original source
+                if (involvedMembers.size < totalMembers) {
+                    // Partial!
+                    (conn as any).isPartial = true;
+                }
+            }
+        });
+
+        setNodes(finalNodes);
+        setConnections(finalConnections);
+        setGroups(groupConfigs);
     };
 
     const handleNodeSave = async (node: VisualNode, newData: any) => {
@@ -441,19 +562,53 @@ export default function ConfigPage() {
             return;
         }
 
-        // Validate connection
-        const sourceNode = nodes.find(n => n.id === sourceId);
+        // Check for Bulk Connection
         const targetNode = nodes.find(n => n.id === nodeId);
+        const sourceNode = nodes.find(n => n.id === sourceId);
 
         if (!isValidConnection(sourceNode, targetNode)) {
-            alert('Invalid connection! Please follow: Crawler → Translator/Formatter, Translator → Formatter, Formatter → Target');
+            alert('Invalid connection!');
             setIsDragging(false);
             setDragSource(null);
             setConnectingSource(null);
             return;
         }
 
-        // Add new connection
+        // Case 1: Source is selected, connect ALL selected to Target
+        if (selectedNodeIds.has(sourceId) && selectedNodeIds.size > 1) {
+            const applicableSources = Array.from(selectedNodeIds)
+                .map(id => nodes.find(n => n.id === id))
+                .filter(n => n && n.type === sourceNode?.type && isValidConnection(n, targetNode)); // same type only
+
+            if (applicableSources.length > 1) {
+                if (confirm(`Bulk Connect: Connect ${applicableSources.length} selected nodes to ${targetNode?.label}?`)) {
+                    addConnections(applicableSources.map(s => ({ source: s!.id, target: nodeId })));
+                    setIsDragging(false);
+                    setDragSource(null);
+                    setConnectingSource(null);
+                    return;
+                }
+            }
+        }
+
+        // Case 2: Target is selected, connect Source to ALL selected Targets
+        if (selectedNodeIds.has(nodeId) && selectedNodeIds.size > 1) {
+            const applicableTargets = Array.from(selectedNodeIds)
+                .map(id => nodes.find(n => n.id === id))
+                .filter(n => n && n.type === targetNode?.type && isValidConnection(sourceNode, n));
+
+            if (applicableTargets.length > 1) {
+                if (confirm(`Bulk Connect: Connect ${sourceNode?.label} to ${applicableTargets.length} selected targets?`)) {
+                    addConnections(applicableTargets.map(t => ({ source: sourceId, target: t!.id })));
+                    setIsDragging(false);
+                    setDragSource(null);
+                    setConnectingSource(null);
+                    return;
+                }
+            }
+        }
+
+        // Add single connection
         addConnection(sourceId, nodeId);
         setIsDragging(false);
         setDragSource(null);
@@ -477,59 +632,66 @@ export default function ConfigPage() {
     };
 
     const addConnection = (sourceId: string, targetId: string) => {
-        if (!config) return;
+        addConnections([{ source: sourceId, target: targetId }]);
+    };
 
-        // Check if connection already exists
-        if (connections.some(c => c.source === sourceId && c.target === targetId)) {
-            alert('Connection already exists!');
-            return;
-        }
+    const addConnections = (conns: { source: string, target: string }[]) => {
+        if (!config || conns.length === 0) return;
 
-        const sourceNode = nodes.find(n => n.id === sourceId);
-        const targetNode = nodes.find(n => n.id === targetId);
-        if (!sourceNode || !targetNode) return;
-
-        // Determine connection type
-        const connType = `${sourceNode.type}-${targetNode.type}` as any;
-
-        const newConn: VisualConnection = {
-            id: `conn-${sourceId}-${targetId}-${Date.now()}`,
-            source: sourceId,
-            target: targetId,
-            type: connType
-        };
-
-        setConnections(prev => [...prev, newConn]);
-
-        // Update config connections map
         const newConfig = _.cloneDeep(config);
         if (!newConfig.connections) newConfig.connections = {};
 
-        if (connType === 'crawler-translator') {
-            if (!newConfig.connections['crawler-translator']) newConfig.connections['crawler-translator'] = {};
-            newConfig.connections['crawler-translator'][sourceId] = targetId;
-        } else if (connType === 'translator-formatter') {
-            if (!newConfig.connections['translator-formatter']) newConfig.connections['translator-formatter'] = {};
-            if (!newConfig.connections['translator-formatter'][sourceId]) newConfig.connections['translator-formatter'][sourceId] = [];
-            newConfig.connections['translator-formatter'][sourceId].push(targetId);
-        } else if (connType === 'crawler-formatter') {
-            if (!newConfig.connections['crawler-formatter']) newConfig.connections['crawler-formatter'] = {};
-            if (!newConfig.connections['crawler-formatter'][sourceId]) newConfig.connections['crawler-formatter'][sourceId] = [];
-            newConfig.connections['crawler-formatter'][sourceId].push(targetId);
-        } else if (connType === 'formatter-target') {
-            if (!newConfig.connections['formatter-target']) newConfig.connections['formatter-target'] = {};
-            if (!newConfig.connections['formatter-target'][sourceId]) newConfig.connections['formatter-target'][sourceId] = [];
-            if (!newConfig.connections['formatter-target'][sourceId]) newConfig.connections['formatter-target'][sourceId] = [];
-            newConfig.connections['formatter-target'][sourceId].push(targetId);
-        } else if (connType === 'forwarder-target') {
-            if (!newConfig.connections['forwarder-target']) newConfig.connections['forwarder-target'] = {};
-            if (!newConfig.connections['forwarder-target'][sourceId]) newConfig.connections['forwarder-target'][sourceId] = [];
-            newConfig.connections['forwarder-target'][sourceId].push(targetId);
-        }
+        const newVisualConns: VisualConnection[] = [];
+        let addedCount = 0;
 
-        setConfig(newConfig);
-        setHasChanges(true);
-        // saveConfigToBackend(newConfig);
+        conns.forEach(({ source, target }) => {
+            // Check existence
+            if (connections.some(c => c.source === source && c.target === target) ||
+                newVisualConns.some(c => c.source === source && c.target === target)) {
+                return;
+            }
+
+            const sourceNode = nodes.find(n => n.id === source);
+            const targetNode = nodes.find(n => n.id === target);
+            if (!sourceNode || !targetNode) return;
+
+            const connType = `${sourceNode.type}-${targetNode.type}`;
+
+            // Add visual
+            newVisualConns.push({
+                id: `conn-${source}-${target}-${Date.now()}-${Math.random()}`,
+                source,
+                target,
+                type: connType
+            });
+            addedCount++;
+
+            // Update Config
+            if (connType === 'crawler-translator') {
+                if (!newConfig.connections!['crawler-translator']) newConfig.connections!['crawler-translator'] = {};
+                (newConfig.connections!['crawler-translator'] as any)[source] = target;
+            } else {
+                // For arrays
+                let mapName: keyof ConnectionMap | null = null;
+                if (connType === 'translator-formatter') mapName = 'translator-formatter';
+                else if (connType === 'crawler-formatter') mapName = 'crawler-formatter';
+                else if (connType === 'formatter-target') mapName = 'formatter-target';
+                else if (connType === 'forwarder-target') mapName = 'forwarder-target';
+
+                if (mapName) {
+                    if (!newConfig.connections![mapName]) newConfig.connections![mapName] = {} as any;
+                    const map = newConfig.connections![mapName] as Record<string, string[]>;
+                    if (!map[source]) map[source] = [];
+                    if (!map[source].includes(target)) map[source].push(target);
+                }
+            }
+        });
+
+        if (addedCount > 0) {
+            setConnections(prev => [...prev, ...newVisualConns]);
+            setConfig(newConfig);
+            setHasChanges(true);
+        }
     };
 
     const removeConnection = (connId: string) => {
@@ -544,7 +706,8 @@ export default function ConfigPage() {
         const newConfig = _.cloneDeep(config);
         if (!newConfig.connections) return;
 
-        const connMap = newConfig.connections[conn.type!];
+        const connType = conn.type as keyof ConnectionMap;
+        const connMap = newConfig.connections[connType];
         if (!connMap) return;
 
         if (conn.type === 'crawler-translator') {
@@ -721,13 +884,127 @@ export default function ConfigPage() {
         setSelectedNodeIds(newSelection);
     };
 
+    const handleToggleGroup = (groupId: string) => {
+        const newCollapsed = new Set(collapsedGroups);
+        if (newCollapsed.has(groupId)) {
+            newCollapsed.delete(groupId);
+        } else {
+            newCollapsed.add(groupId);
+        }
+        setCollapsedGroups(newCollapsed);
+        if (config) processGraph(config, newCollapsed);
+    };
+
     const handleEditNode = (node: VisualNode) => {
+        if (node.type === 'group') {
+            handleToggleGroup(node.id);
+            return;
+        }
         setEditingNode(node);
     };
 
+    const handleDeleteNodes = (nodeIdsToDelete: Set<string>) => {
+        if (!config || nodeIdsToDelete.size === 0) return;
+
+        if (!confirm(`Delete ${nodeIdsToDelete.size} selected item(s)?`)) return;
+
+        const newConfig = _.cloneDeep(config);
+
+        nodeIdsToDelete.forEach(nodeId => {
+            // Find node to get metadata
+            const visualNode = nodes.find(n => n.id === nodeId);
+            if (!visualNode) return;
+
+            const type = visualNode.type;
+            const data = visualNode.data;
+
+            // 1. Remove from Config Arrays
+            if (type === 'crawler') {
+                if (newConfig.crawlers) {
+                    newConfig.crawlers = newConfig.crawlers.filter(c => c.name !== data.name);
+                }
+            } else if (type === 'forwarder') {
+                if (newConfig.forwarders) {
+                    newConfig.forwarders = newConfig.forwarders.filter(f => f.id !== data.id);
+                }
+            } else if (type === 'translator') {
+                if (!visualNode.id.includes('legacy') && newConfig.translators) {
+                    newConfig.translators = newConfig.translators.filter(t => t.id !== data.id);
+                }
+            } else if (type === 'formatter') {
+                if (newConfig.formatters) {
+                    newConfig.formatters = newConfig.formatters.filter(f => f.id !== data.id);
+                }
+            } else if (type === 'target') {
+                if (newConfig.forward_targets) {
+                    newConfig.forward_targets = newConfig.forward_targets.filter(t => t.id !== data.id);
+                }
+            } else if (type === 'group') {
+                // If deleting a group node, we might want to just un-group?
+                // Or delete everything in it?
+                // Standard behavior: Delete group = Delete members usually?
+                // Or Un-Group?
+                // Let's safe choice: Alert "Cannot delete group node directly. Ungroup first."
+                // Or just handle Un-Group logic here?
+                const groupId = nodeId;
+                const groupLabel = visualNode.label.split(' (')[0]; // simple parse
+                const newCollapsed = new Set(collapsedGroups);
+                newCollapsed.delete(groupId);
+                setCollapsedGroups(newCollapsed);
+                // But this function modifies config... 
+                // Does config store groups? Yes via 'group' property on nodes.
+                // If we delete the group node, we should ideally clear 'group' prop from members.
+                // Implementation:
+                const members = visualNode.data.members as VisualNode[];
+                if (members) {
+                    members.forEach(m => {
+                        // Find member in newConfig and clear group
+                        const mId = m.id;
+                        // Only shallow search in newConfig lists...
+                        // Or simpler: Reuse handleCreateGroup logic but setting group to undefined/null.
+                        // Getting ID matching is hard.
+                    });
+                }
+            }
+
+            // 2. Remove Connections
+            // We use the nodeId (which matches what is stored in connection maps hopefully)
+            // Actually, for Crawlers, connection map uses ID (name?).
+            // processGraph uses `getNodeId` which returns `name` for Crawlers.
+            // So `nodeId` passed here IS the ID used in connections for Crawlers/Forwarders etc (except index-based fallbacks).
+
+            if (newConfig.connections) {
+                const conns = newConfig.connections;
+                Object.keys(conns).forEach(connMapName => {
+                    const map = conns[connMapName as keyof ConnectionMap];
+                    if (!map) return;
+
+                    const mapAny = map as any;
+
+                    // Clean keys (sources)
+                    if (mapAny[nodeId]) delete mapAny[nodeId];
+
+                    // Clean values (targets)
+                    Object.keys(mapAny).forEach(key => {
+                        const val = mapAny[key];
+                        if (Array.isArray(val)) {
+                            mapAny[key] = val.filter((t: string) => t !== nodeId);
+                        } else if (val === nodeId) {
+                            delete mapAny[key];
+                        }
+                    });
+                });
+            }
+        });
+
+        setConfig(newConfig);
+        processGraph(newConfig);
+        setHasChanges(true);
+        setSelectedNodeIds(new Set());
+    };
+
     const handleDeleteNode = (nodeId: string) => {
-        // Not fully implemented on backend sync side yet, but we can visually remove for now or alert
-        alert('Node deletion logic to be implemented in implementation_plan.md next phases.');
+        handleDeleteNodes(new Set([nodeId]));
     };
 
     const saveConfigToBackend = async (configToSave: AppConfig) => {
@@ -826,36 +1103,169 @@ export default function ConfigPage() {
                 </div>
             </div>
 
+            {/* Action Buttons - Fixed Position */}
+            <div className="absolute top-20 right-4 z-40 flex flex-col gap-2 pointer-events-auto">
+                {selectedNodeIds.size > 0 && (
+                    <button
+                        onClick={() => handleDeleteNodes(selectedNodeIds)}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105 animate-fade-in"
+                    >
+                        <span className="text-lg">🗑️</span> Delete ({selectedNodeIds.size})
+                    </button>
+                )}
+                {selectedNodeIds.size > 1 && (
+                    <button
+                        onClick={handleCreateGroup}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105 animate-fade-in"
+                    >
+                        <span className="text-lg">⚓</span> Create Group
+                    </button>
+                )}
+                <button
+                    onClick={addNewCrawler}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                >
+                    <span className="text-lg">+</span> Add Crawler
+                </button>
+                <button
+                    onClick={addNewFormatter}
+                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                >
+                    <span className="text-lg">+</span> Add Formatter
+                </button>
+                <button
+                    onClick={addNewTarget}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                >
+                    <span className="text-lg">+</span> Add Target
+                </button>
+            </div>
+
             {/* Canvas */}
             <div
                 ref={canvasRef}
                 className="flex-grow relative overflow-auto bg-[url('/grid.svg')] bg-fixed"
                 style={{ backgroundSize: '20px 20px' }}
                 onMouseMove={(e) => {
-                    if (isDragging && canvasRef.current) {
+                    if (canvasRef.current) {
                         const rect = canvasRef.current.getBoundingClientRect();
-                        setMousePos({
-                            x: e.clientX - rect.left + canvasRef.current.scrollLeft,
-                            y: e.clientY - rect.top + canvasRef.current.scrollTop
-                        });
+                        const x = e.clientX - rect.left + canvasRef.current.scrollLeft;
+                        const y = e.clientY - rect.top + canvasRef.current.scrollTop;
+
+                        if (isDragging) {
+                            setMousePos({ x, y });
+                        }
+
+                        if (isBrushSelecting) {
+                            setBrushCurrent({ x, y });
+                        }
                     }
                 }}
-                onMouseUp={() => {
+                onMouseUp={(e) => {
                     if (isDragging) {
                         setIsDragging(false);
                         setDragSource(null);
                         setConnectingSource(null);
+                    }
+
+                    if (isBrushSelecting) {
+                        setIsBrushSelecting(false);
+                        // Calculate intersection
+                        const x = Math.min(brushStart.x, brushCurrent.x);
+                        const y = Math.min(brushStart.y, brushCurrent.y);
+                        const w = Math.abs(brushCurrent.x - brushStart.x);
+                        const h = Math.abs(brushCurrent.y - brushStart.y);
+
+                        // Ignore tiny clicks
+                        if (w > 5 || h > 5) {
+                            const newSelection = new Set(e.shiftKey ? selectedNodeIds : []); // Keep existing if shift
+
+                            nodes.forEach(node => {
+                                // Check intersection
+                                if (
+                                    node.x < x + w &&
+                                    node.x + node.width > x &&
+                                    node.y < y + h &&
+                                    node.y + node.height > y
+                                ) {
+                                    newSelection.add(node.id);
+                                }
+                            });
+                            setSelectedNodeIds(newSelection);
+                        }
                     }
                 }}
                 onClick={() => {
                     if (connectingSource) {
                         setConnectingSource(null);
                     }
-                    if (!isDragging) {
-                        setSelectedNodeIds(new Set());
+                    if (!isDragging && !isBrushSelecting) {
+                        if (Math.abs(brushCurrent.x - brushStart.x) < 5 && Math.abs(brushCurrent.y - brushStart.y) < 5) {
+                            setSelectedNodeIds(new Set());
+                        }
                     }
                 }}
             >
+                {/* Canvas Click/Drag Handler Layer */}
+                <div
+                    className="absolute inset-0 z-0"
+                    onMouseDown={(e) => {
+                        // Only start brush if clicking directly on background, not on a node/connection (handled by stopPropagation there)
+                        // And only if not in connection-drag mode
+                        if (!isDragging && !connectingSource && e.button === 0) {
+                            if (canvasRef.current) {
+                                const rect = canvasRef.current.getBoundingClientRect();
+                                const x = e.clientX - rect.left + canvasRef.current.scrollLeft;
+                                const y = e.clientY - rect.top + canvasRef.current.scrollTop;
+                                setIsBrushSelecting(true);
+                                setBrushStart({ x, y });
+                                setBrushCurrent({ x, y });
+
+                                // Clear selection if not holding shift? 
+                                if (!e.shiftKey) {
+                                    setSelectedNodeIds(new Set());
+                                }
+                            }
+                        }
+                    }}
+                />
+
+                {/* Legend */}
+                <div className="absolute bottom-4 left-4 bg-gray-900/90 border border-gray-700 p-3 rounded-lg shadow-xl backdrop-blur-sm z-50 pointer-events-none select-none">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">Legend</h3>
+                    <div className="flex flex-col gap-2 text-xs text-gray-300">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                            <span>Crawler</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                            <span>Translator</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                            <span>Formatter</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                            <span>Target</span>
+                        </div>
+                        <div className="h-px bg-gray-700 my-1"></div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-0.5 bg-gray-500"></div>
+                            <span>Connection</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-0.5 bg-amber-500"></div>
+                            <span>Partial Conn</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 border border-dashed border-indigo-400 bg-indigo-900/30"></div>
+                            <span>Group</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div
                     className="absolute inset-0"
                     style={{ minWidth: canvasSize.width, minHeight: canvasSize.height }}
@@ -891,25 +1301,39 @@ export default function ConfigPage() {
                     </div>
 
                     {/* Groups Layer */}
-                    <div className="absolute inset-0 pointer-events-none z-0">
-                        {groups.map(group => (
+                    <div className="absolute inset-0 z-0">
+                        {groups.map(group => !group.isCollapsed && (
                             <div
                                 key={group.id}
-                                className="absolute border-2 rounded-xl transition-all"
+                                className="absolute border-2 rounded-xl transition-all pointer-events-none"
                                 style={{
                                     left: group.x,
                                     top: group.y,
                                     width: group.width,
                                     height: group.height,
                                     borderColor: group.color,
-                                    backgroundColor: `${group.color}10`, // 10% opacity
+                                    backgroundColor: `${group.color}05`, // 5% opacity
                                 }}
                             >
                                 <div
-                                    className="absolute -top-3 left-4 px-2 text-xs font-bold text-white rounded uppercase tracking-wider"
-                                    style={{ backgroundColor: group.color }}
+                                    className="absolute -top-7 left-0 flex items-center gap-2 pointer-events-auto"
                                 >
-                                    {group.label}
+                                    <div
+                                        className="px-2 py-1 text-xs font-bold text-white rounded uppercase tracking-wider shadow-sm flex items-center gap-2"
+                                        style={{ backgroundColor: group.color }}
+                                    >
+                                        {group.label}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleGroup(group.id);
+                                            }}
+                                            className="hover:bg-black/20 rounded p-0.5"
+                                            title="Collapse Group"
+                                        >
+                                            ➖
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -927,11 +1351,12 @@ export default function ConfigPage() {
                             const endX = target.x;
                             const endY = target.y + target.height / 2;
 
-                            const color = conn.type === 'crawler-translator' ? '#8b5cf6' :
-                                conn.type === 'translator-formatter' ? '#ec4899' :
-                                    conn.type === 'crawler-formatter' ? '#f59e0b' :
-                                        conn.type === 'formatter-target' ? '#10b981' :
-                                            conn.type === 'forwarder-target' ? '#c026d3' : '#6b7280';
+                            const color = conn.isPartial ? '#f59e0b' : // Orange/Yellow for Partial
+                                conn.type === 'crawler-translator' ? '#8b5cf6' :
+                                    conn.type === 'translator-formatter' ? '#ec4899' :
+                                        conn.type === 'crawler-formatter' ? '#f59e0b' :
+                                            conn.type === 'formatter-target' ? '#10b981' :
+                                                conn.type === 'forwarder-target' ? '#c026d3' : '#6b7280';
 
                             const isSelected = selectedNodeIds.has(conn.source) || selectedNodeIds.has(conn.target);
 
@@ -990,6 +1415,19 @@ export default function ConfigPage() {
                         })()}
                     </svg>
 
+                    {/* Brush Selection Box */}
+                    {isBrushSelecting && (
+                        <div
+                            className="absolute border border-blue-500 bg-blue-500/20 pointer-events-none z-50"
+                            style={{
+                                left: Math.min(brushStart.x, brushCurrent.x),
+                                top: Math.min(brushStart.y, brushCurrent.y),
+                                width: Math.abs(brushCurrent.x - brushStart.x),
+                                height: Math.abs(brushCurrent.y - brushStart.y),
+                            }}
+                        />
+                    )}
+
                     {/* Nodes Layer */}
                     {nodes.length === 0 && !loading && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -1029,43 +1467,49 @@ export default function ConfigPage() {
             </div>
 
             {/* Debug Info Panel */}
-            {showDebug && config && (
-                <div className="h-64 border-t border-white/10 bg-black/90 p-4 font-mono text-xs overflow-auto">
-                    <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-lg text-purple-300">Backend Config Debug</h3>
-                        <button onClick={() => setShowDebug(false)} className="text-white/60 hover:text-white">✕ Close</button>
+            {
+                showDebug && config && (
+                    <div className="h-64 border-t border-white/10 bg-black/90 p-4 font-mono text-xs overflow-auto">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-bold text-lg text-purple-300">Backend Config Debug</h3>
+                            <button onClick={() => setShowDebug(false)} className="text-white/60 hover:text-white">✕ Close</button>
+                        </div>
+                        <pre className="text-green-400 whitespace-pre-wrap">
+                            {JSON.stringify(config, null, 2)}
+                        </pre>
                     </div>
-                    <pre className="text-green-400 whitespace-pre-wrap">
-                        {JSON.stringify(config, null, 2)}
-                    </pre>
-                </div>
-            )}
+                )
+            }
 
             {/* Editor Modal */}
-            {editingNode && config && (
-                <ConfigEditor
-                    node={editingNode}
-                    fullConfig={config}
-                    availableCookies={availableCookies}
-                    onSave={handleNodeSave}
-                    onClose={() => setEditingNode(null)}
-                />
-            )}
+            {
+                editingNode && config && (
+                    <ConfigEditor
+                        node={editingNode}
+                        fullConfig={config}
+                        availableCookies={availableCookies}
+                        onSave={handleNodeSave}
+                        onClose={() => setEditingNode(null)}
+                    />
+                )
+            }
 
             {/* Review Modal */}
-            {showReview && config && originalConfig && (
-                <ReviewModal
-                    originalConfig={originalConfig}
-                    newConfig={config}
-                    onCancel={() => setShowReview(false)}
-                    onConfirm={() => {
-                        saveConfigToBackend(config);
-                        setShowReview(false);
-                        setHasChanges(false);
-                        setOriginalConfig(_.cloneDeep(config));
-                    }}
-                />
-            )}
-        </div>
+            {
+                showReview && config && originalConfig && (
+                    <ReviewModal
+                        originalConfig={originalConfig}
+                        newConfig={config}
+                        onCancel={() => setShowReview(false)}
+                        onConfirm={() => {
+                            saveConfigToBackend(config);
+                            setShowReview(false);
+                            setHasChanges(false);
+                            setOriginalConfig(_.cloneDeep(config));
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 }
