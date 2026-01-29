@@ -30,6 +30,10 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 sub_task_type: data.cfg_crawler?.sub_task_type ? data.cfg_crawler.sub_task_type.join('\n') : '',
                 interval_min: data.cfg_crawler?.interval_time?.min || '',
                 interval_max: data.cfg_crawler?.interval_time?.max || '',
+                user_agent: data.cfg_crawler?.user_agent || '',
+                immediate_notify: data.cfg_crawler?.immediate_notify || false,
+                group: data.group || '',
+                raw_config: JSON.stringify(data.cfg_crawler || {}, null, 2),
             });
         } else if (node.type === 'translator') {
             const data = node.data as any;
@@ -41,6 +45,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 model_id: data.cfg_translator?.model_id || '',
                 prompt: data.cfg_translator?.prompt || '',
                 base_url: data.cfg_translator?.base_url || '',
+                group: data.group || '',
+                raw_config: JSON.stringify(data.cfg_translator || {}, null, 2),
             });
         } else if (node.type === 'forwarder') {
             const data = node.data as Forwarder;
@@ -57,12 +63,16 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 subscribers: data.subscribers ? data.subscribers.map(s => typeof s === 'string' ? s : s.id) : [],
                 accept_keywords: data.cfg_forward_target?.accept_keywords ? data.cfg_forward_target.accept_keywords.join('\n') : '',
                 filter_keywords: data.cfg_forward_target?.filter_keywords ? data.cfg_forward_target.filter_keywords.join('\n') : '',
+                group: data.group || '',
+                raw_config: JSON.stringify(data.cfg_forwarder || {}, null, 2),
+                block_rules: JSON.stringify(data.cfg_forward_target?.block_rules || [], null, 2),
             });
         } else if (node.type === 'formatter') {
             setFormData({
                 id: node.data.id || '',
                 name: node.data.name || '',
                 render_type: node.data.render_type || 'text',
+                group: node.data.group || '',
             });
         } else if (node.type === 'target') {
             const data = node.data as ForwardTarget;
@@ -83,6 +93,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 bili_jct: cfg.bili_jct || '',
                 bili_media_check: cfg.media_check_level || 'loose',
                 json_config: JSON.stringify(data.cfg_platform, null, 2),
+                group: data.group || '',
+                block_rules: JSON.stringify(data.cfg_platform?.block_rules || [], null, 2),
             });
         }
     }, [node]);
@@ -157,6 +169,16 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                     max: parseInt(formData.interval_max) || 0
                 };
             }
+            updatedData.cfg_crawler.user_agent = formData.user_agent;
+            updatedData.cfg_crawler.immediate_notify = formData.immediate_notify;
+            updatedData.group = formData.group;
+
+            try {
+                if (formData.raw_config) {
+                    const raw = JSON.parse(formData.raw_config);
+                    Object.assign(updatedData.cfg_crawler, raw);
+                }
+            } catch (e) { }
 
         } else if (node.type === 'translator') {
             updatedData.id = formData.id || node.data.id;
@@ -167,6 +189,13 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             updatedData.cfg_translator.model_id = formData.model_id;
             updatedData.cfg_translator.prompt = formData.prompt;
             updatedData.cfg_translator.base_url = formData.base_url;
+            updatedData.group = formData.group;
+            try {
+                if (formData.raw_config) {
+                    const raw = JSON.parse(formData.raw_config);
+                    Object.assign(updatedData.cfg_translator, raw);
+                }
+            } catch (e) { }
 
         } else if (node.type === 'forwarder') {
             updatedData.id = formData.id || node.data.id;
@@ -184,11 +213,26 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             if (!updatedData.cfg_forward_target) updatedData.cfg_forward_target = {};
             updatedData.cfg_forward_target.accept_keywords = splitLines(formData.accept_keywords);
             updatedData.cfg_forward_target.filter_keywords = splitLines(formData.filter_keywords);
+            updatedData.group = formData.group;
+
+            try {
+                if (formData.block_rules) {
+                    updatedData.cfg_forward_target.block_rules = JSON.parse(formData.block_rules);
+                }
+            } catch (e) { }
+
+            try {
+                if (formData.raw_config) {
+                    const raw = JSON.parse(formData.raw_config);
+                    Object.assign(updatedData.cfg_forwarder, raw);
+                }
+            } catch (e) { }
 
         } else if (node.type === 'formatter') {
             updatedData.id = formData.id || node.data.id;
             updatedData.name = formData.name;
             updatedData.render_type = formData.render_type;
+            updatedData.group = formData.group;
 
         } else if (node.type === 'target') {
             updatedData.platform = formData.platform;
@@ -228,6 +272,12 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             platformConfig.filter_keywords = splitLines(formData.filter_keywords);
 
             updatedData.cfg_platform = platformConfig;
+            updatedData.group = formData.group;
+            try {
+                if (formData.block_rules) {
+                    updatedData.cfg_platform.block_rules = JSON.parse(formData.block_rules);
+                }
+            } catch (e) { }
         }
 
         onSave(node, updatedData);
@@ -249,6 +299,9 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                         <>
                             <div className="grid grid-cols-2 gap-4">
                                 <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} />
+                                <FormInput label="Group Tag" value={formData.group} onChange={(v: string) => handleChange('group', v)} placeholder="Grouping label" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <FormSelect
                                     label="Task Type"
                                     value={formData.task_type}
@@ -282,7 +335,20 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 <FormInput label="Interval Min (ms)" value={formData.interval_min} onChange={(v: string) => handleChange('interval_min', v)} type="number" />
                                 <FormInput label="Interval Max (ms)" value={formData.interval_max} onChange={(v: string) => handleChange('interval_max', v)} type="number" />
                             </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormInput label="User Agent" value={formData.user_agent} onChange={(v: string) => handleChange('user_agent', v)} />
+                                <div className="flex items-center pt-6">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-white/80">
+                                        <input type="checkbox" checked={formData.immediate_notify} onChange={(e) => handleChange('immediate_notify', e.target.checked)} className="rounded border-white/20 bg-black/30" />
+                                        Immediate Notify
+                                    </label>
+                                </div>
+                            </div>
                             <FormTextarea label="Sub Task Types" value={formData.sub_task_type} onChange={(v: string) => handleChange('sub_task_type', v)} placeholder="One per line" />
+
+                            <h3 className="text-sm font-bold text-gray-400 border-b border-gray-500/30 pb-1 mt-4">Advanced: Raw Config</h3>
+                            <div className="text-xs text-white/40 mb-2">Edits here will override individual fields above.</div>
+                            <FormTextarea label="JSON Config" value={formData.raw_config} onChange={(v: string) => handleChange('raw_config', v)} fontMono />
                         </>
                     )}
 
@@ -296,6 +362,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 <FormInput label="ID (Auto-generated if empty)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="translator-1" />
                                 <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} placeholder="My Translator" />
                             </div>
+                            <FormInput label="Group Tag" value={formData.group} onChange={(v: string) => handleChange('group', v)} placeholder="Grouping label" />
                             <FormSelect
                                 label="Provider"
                                 value={formData.provider}
@@ -306,6 +373,8 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                             <FormInput label="Base URL" value={formData.base_url} onChange={(v: string) => handleChange('base_url', v)} placeholder="Optional" />
                             <FormInput label="Model ID" value={formData.model_id} onChange={(v: string) => handleChange('model_id', v)} />
                             <FormTextarea label="System Prompt" value={formData.prompt} onChange={(v: string) => handleChange('prompt', v)} />
+                            <h3 className="text-sm font-bold text-gray-400 border-b border-gray-500/30 pb-1 mt-4">Advanced: Raw Config</h3>
+                            <FormTextarea label="JSON Config" value={formData.raw_config} onChange={(v: string) => handleChange('raw_config', v)} fontMono />
                         </>
                     )}
 
@@ -316,6 +385,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 <FormInput label="ID (Optional)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="forwarder-1" />
                                 <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} />
                             </div>
+                            <FormInput label="Group Tag" value={formData.group} onChange={(v: string) => handleChange('group', v)} placeholder="Grouping label" />
                             <FormInput label="Task Title" value={formData.task_title} onChange={(v: string) => handleChange('task_title', v)} />
                             <FormSelect
                                 label="Task Type"

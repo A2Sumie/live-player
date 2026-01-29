@@ -16,6 +16,7 @@ export interface AppConfig {
 
 export interface Crawler {
     name?: string;
+    group?: string;
     websites?: Array<string>;
     origin?: string;
     paths?: Array<string>;
@@ -41,6 +42,7 @@ export interface CrawlerConfig {
 export interface Translator {
     id?: string;  // Unique identifier when used as independent config
     name?: string; // Display name
+    group?: string;
     provider: string; // 'Google' | 'BigModel' | 'ByteDance' | 'Deepseek' | 'Openai' | 'QwenMT' | 'None'
     api_key: string;
     cfg_translator?: {
@@ -54,6 +56,7 @@ export interface Translator {
 export interface Forwarder {
     id?: string;
     name?: string;
+    group?: string;
     websites?: Array<string>;
     origin?: string;
     paths?: Array<string>;
@@ -75,12 +78,14 @@ export interface ForwarderConfig {
 export interface ForwardTarget {
     platform: string; // 'telegram' | 'bilibili' | 'qq' | 'none'
     id?: string;
+    group?: string;
     cfg_platform: any; // Simplified for now
 }
 
 export interface Formatter {
     id?: string;  // Auto-generated or user-defined
     name?: string;
+    group?: string;
     render_type: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary';
 }
 
