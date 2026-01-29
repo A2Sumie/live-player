@@ -19,6 +19,7 @@ export default function ConfigPage() {
     const [hasChanges, setHasChanges] = useState(false);
     const [nodes, setNodes] = useState<VisualNode[]>([]);
     const [connections, setConnections] = useState<VisualConnection[]>([]);
+    const [groups, setGroups] = useState<{ id: string; label: string; x: number; y: number; width: number; height: number; color: string }[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [status, setStatus] = useState<string | null>(null);
@@ -35,6 +36,10 @@ export default function ConfigPage() {
     const [connectingSource, setConnectingSource] = useState<string | null>(null); // For Click-to-Connect
     const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const canvasRef = useRef<HTMLDivElement>(null);
+
+    // UI State
+    const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+    const [canvasSize, setCanvasSize] = useState({ width: 2000, height: 1500 });
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -75,6 +80,8 @@ export default function ConfigPage() {
             setConfig(configData);
             setOriginalConfig(_.cloneDeep(configData));
             setHasChanges(false);
+            setHasChanges(false);
+            setSelectedNodeIds(new Set());
             processGraph(configData);
 
             if (cookiesRes.ok) {
@@ -283,8 +290,44 @@ export default function ConfigPage() {
 
 
 
+        // Calculate Canvas Size dynamically
+        const maxX = Math.max(...newNodes.map(n => n.x + n.width), 1500);
+        const maxY = Math.max(...newNodes.map(n => n.y + n.height), 1000);
+        setCanvasSize({ width: maxX + 500, height: maxY + 500 });
+
+        // Process Groups
+        const groupMap = new Map<string, VisualNode[]>();
+        newNodes.forEach(node => {
+            if (node.data.group) {
+                if (!groupMap.has(node.data.group)) groupMap.set(node.data.group, []);
+                groupMap.get(node.data.group)!.push(node);
+            }
+        });
+
+        const newGroups = Array.from(groupMap.entries()).map(([label, groupNodes], i) => {
+            const minX = Math.min(...groupNodes.map(n => n.x));
+            const minY = Math.min(...groupNodes.map(n => n.y));
+            const maxX = Math.max(...groupNodes.map(n => n.x + n.width));
+            const maxY = Math.max(...groupNodes.map(n => n.y + n.height));
+
+            // Deterministic color based on label
+            const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
+            const colorIndex = label.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+
+            return {
+                id: `group-${label}`,
+                label,
+                x: minX - 20,
+                y: minY - 40, // Extra space for label
+                width: maxX - minX + 40,
+                height: maxY - minY + 60,
+                color: colors[colorIndex]
+            };
+        });
+
         setNodes(newNodes);
         setConnections(newConnections);
+        setGroups(newGroups);
     };
 
     const handleNodeSave = async (node: VisualNode, newData: any) => {
@@ -518,6 +561,118 @@ export default function ConfigPage() {
         // saveConfigToBackend(newConfig);
     };
 
+    const addNewCrawler = () => {
+        if (!config) return;
+
+        const newCrawler = {
+            name: `New Crawler ${Date.now()}`,
+            cron: '0 * * * *',
+            websites: [],
+            paths: [],
+            task_type: 'article' as const
+        };
+
+        const newConfig = _.cloneDeep(config);
+        if (!newConfig.crawlers) newConfig.crawlers = [];
+        newConfig.crawlers.push(newCrawler);
+
+        setConfig(newConfig);
+        processGraph(newConfig);
+        setHasChanges(true);
+    };
+
+    const handleCreateGroup = () => {
+        if (selectedNodeIds.size === 0) return;
+        const groupName = prompt('Enter group name:');
+        if (!groupName) return;
+
+        const newConfig = _.cloneDeep(config);
+        if (!newConfig) return;
+
+        // Update all selected nodes to have this group
+        // We need to iterate through all node lists in config
+        const updateGroup = (list: any[]) => {
+            if (!list) return;
+            list.forEach(item => {
+                // Determine ID - this is tricky because not all config items have consistent IDs
+                // In processGraph we generate IDs. Here we need to match the visual node ID to the config item
+                // Simplest way: loop through our current 'nodes' state, find selected ones, and match back to config by reference or ID?
+                // Actually, simple way: we already know how handleNodeSave works.
+                // Let's reuse the logic but for multiple nodes.
+            });
+        };
+
+        // Easier: visual nodes contain a reference to 'data'. But 'data' in visual node might be a copy?
+        // In processGraph: `data: crawler` -> It's a reference if shallow. 
+        // `const configData = await configRes.json()` -> `setConfig(configData)`.
+        // `processGraph(configData)` -> `data: crawler` is a reference to the object inside `configData`.
+        // So modifying `node.data.group` directly *should* work if we then call setConfig with a new object?
+        // No, React state is immutable-ish. better to find paths.
+
+        // Brute force: iterate all lists in newConfig
+        const setGroup = (item: any) => { item.group = groupName; };
+
+        selectedNodeIds.forEach(visualId => {
+            const visualNode = nodes.find(n => n.id === visualId);
+            if (!visualNode) return;
+            const parts = visualId.split('-');
+            const type = parts[0];
+            const idx = parseInt(parts[1]); // This works for array-indexed items (crawler, etc generated IDs often have index or we can infer)
+
+            // Re-implement finding logic from handleNodeSave roughly
+            if (type === 'crawler') {
+                const item = newConfig.crawlers?.find(c => c === visualNode.data || (newConfig.crawlers?.indexOf(c) === idx)); // Reference check won't work easily if we deep cloned newConfig.
+                // Use index from visual ID logic?
+                // processGraph: `getNodeId('crawler', i, crawler.name)` -> `crawler-i` if name empty? No, `crawler.name`.
+                // If ID is `crawler-0`, it's index 0. If `crawler-UniqueName`, it's name match.
+                // Let's use the visualNode.data.name or id to find match.
+
+                if (newConfig.crawlers) {
+                    // Try to find by object equality with the *original* config (which visualNode.data points to)
+                    // But we have newConfig...
+                    // Let's rely on name/id.
+                    let found = newConfig.crawlers.find(c => c.name === visualNode.data.name);
+                    if (found) found.group = groupName;
+                }
+            } else if (type === 'translator') {
+                // ... similar ...
+                // To keep it simple, let's just use the `handleNodeSave` philosophy:
+                // We will manually trigger a save for each selected node.
+                // Ideally we batch this.
+            }
+        });
+
+        // Optimized approach: 
+        const selectedNodes = nodes.filter(n => selectedNodeIds.has(n.id));
+        selectedNodes.forEach(node => {
+            // We'll trust the user to save/refresh.
+            // But actually, let's just do a dirty update on the reference if possible?
+            // No, let's update newConfig properly.
+            const [type] = node.id.split('-');
+            if (type === 'crawler') {
+                const c = newConfig.crawlers?.find(x => x.name === node.data.name);
+                if (c) c.group = groupName;
+            } else if (type === 'forwarder') {
+                const f = newConfig.forwarders?.find(x => x.id === node.data.id || x.name === node.data.name);
+                if (f) f.group = groupName;
+            } else if (type === 'formatter') {
+                const f = newConfig.formatters?.find(x => x.id === node.data.id);
+                if (f) f.group = groupName;
+            } else if (type === 'target') {
+                const t = newConfig.forward_targets?.find(x => x.id === node.data.id);
+                if (t) t.group = groupName;
+            } else if (type === 'translator') {
+                const t = newConfig.translators?.find(x => x.id === node.data.id);
+                if (t) t.group = groupName;
+            }
+        });
+
+        setConfig(newConfig);
+        processGraph(newConfig);
+        setHasChanges(true);
+        setSelectedNodeIds(new Set());
+    }
+
     const addNewFormatter = () => {
         if (!config) return;
 
@@ -554,6 +709,25 @@ export default function ConfigPage() {
         processGraph(newConfig);
         setHasChanges(true);
         // saveConfigToBackend(newConfig);
+    };
+
+    const handleNodeClick = (node: VisualNode, meta: { shiftKey: boolean }) => {
+        const newSelection = new Set(meta.shiftKey ? selectedNodeIds : []);
+        if (newSelection.has(node.id)) {
+            newSelection.delete(node.id);
+        } else {
+            newSelection.add(node.id);
+        }
+        setSelectedNodeIds(newSelection);
+    };
+
+    const handleEditNode = (node: VisualNode) => {
+        setEditingNode(node);
+    };
+
+    const handleDeleteNode = (nodeId: string) => {
+        // Not fully implemented on backend sync side yet, but we can visually remove for now or alert
+        alert('Node deletion logic to be implemented in implementation_plan.md next phases.');
     };
 
     const saveConfigToBackend = async (configToSave: AppConfig) => {
@@ -675,13 +849,33 @@ export default function ConfigPage() {
                 }}
                 onClick={() => {
                     if (connectingSource) {
-                        setConnectingSource(null); // Click background to cancel connection
+                        setConnectingSource(null);
+                    }
+                    if (!isDragging) {
+                        setSelectedNodeIds(new Set());
                     }
                 }}
             >
-                <div className="absolute inset-0 min-w-[1500px] min-h-[1000px]">
+                <div
+                    className="absolute inset-0"
+                    style={{ minWidth: canvasSize.width, minHeight: canvasSize.height }}
+                >
                     {/* Action Buttons */}
                     <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
+                        {selectedNodeIds.size > 1 && (
+                            <button
+                                onClick={handleCreateGroup}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105 animate-fade-in"
+                            >
+                                <span className="text-lg">⚓</span> Create Group
+                            </button>
+                        )}
+                        <button
+                            onClick={addNewCrawler}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                        >
+                            <span className="text-lg">+</span> Add Crawler
+                        </button>
                         <button
                             onClick={addNewFormatter}
                             className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
@@ -695,6 +889,32 @@ export default function ConfigPage() {
                             <span className="text-lg">+</span> Add Target
                         </button>
                     </div>
+
+                    {/* Groups Layer */}
+                    <div className="absolute inset-0 pointer-events-none z-0">
+                        {groups.map(group => (
+                            <div
+                                key={group.id}
+                                className="absolute border-2 rounded-xl transition-all"
+                                style={{
+                                    left: group.x,
+                                    top: group.y,
+                                    width: group.width,
+                                    height: group.height,
+                                    borderColor: group.color,
+                                    backgroundColor: `${group.color}10`, // 10% opacity
+                                }}
+                            >
+                                <div
+                                    className="absolute -top-3 left-4 px-2 text-xs font-bold text-white rounded uppercase tracking-wider"
+                                    style={{ backgroundColor: group.color }}
+                                >
+                                    {group.label}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
                     {/* SVG Connections Layer */}
                     <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
                         {connections.map(conn => {
@@ -713,21 +933,37 @@ export default function ConfigPage() {
                                         conn.type === 'formatter-target' ? '#10b981' :
                                             conn.type === 'forwarder-target' ? '#c026d3' : '#6b7280';
 
+                            const isSelected = selectedNodeIds.has(conn.source) || selectedNodeIds.has(conn.target);
+
                             return (
-                                <g key={conn.id}>
+                                <g key={conn.id} className="group">
+                                    {/* Ghost Path for easy clicking */}
                                     <path
                                         d={`M ${startX} ${startY} C ${startX + 50} ${startY}, ${endX - 50} ${endY}, ${endX} ${endY}`}
                                         fill="none"
-                                        stroke={color}
-                                        strokeWidth="2"
-                                        strokeDasharray="5,5"
-                                        className="cursor-pointer hover:stroke-red-500 hover:opacity-100 transition-all"
-                                        style={{ pointerEvents: 'stroke', opacity: 0.6 }}
-                                        onClick={() => {
+                                        stroke="transparent"
+                                        strokeWidth="20"
+                                        className="cursor-pointer"
+                                        style={{ pointerEvents: 'stroke' }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
                                             if (confirm('Delete this connection?')) {
                                                 removeConnection(conn.id);
                                             }
                                         }}
+                                        onMouseEnter={() => {
+                                            // Optional: could set a hover state here if needed
+                                        }}
+                                    />
+                                    {/* Visible Path */}
+                                    <path
+                                        d={`M ${startX} ${startY} C ${startX + 50} ${startY}, ${endX - 50} ${endY}, ${endX} ${endY}`}
+                                        fill="none"
+                                        stroke={isSelected ? '#ffffff' : color}
+                                        strokeWidth={isSelected ? '3' : '2'}
+                                        strokeDasharray={isSelected ? 'none' : '5,5'}
+                                        className="pointer-events-none group-hover:stroke-red-500 group-hover:stroke-width-4 transition-all"
+                                        style={{ opacity: isSelected ? 1 : 0.6, filter: isSelected ? 'drop-shadow(0 0 5px rgba(255,255,255,0.5))' : 'none' }}
                                     />
                                 </g>
                             );
@@ -771,7 +1007,11 @@ export default function ConfigPage() {
                         <ConfigNode
                             key={node.id}
                             node={node}
-                            onClick={(n) => setEditingNode(n)}
+                            // onClick={(n) => setEditingNode(n)} // OLD SINGLE CLICK
+                            onClick={handleNodeClick}
+                            onEdit={handleEditNode}
+                            onDelete={handleDeleteNode}
+                            isSelected={selectedNodeIds.has(node.id)}
                             onConnectionStart={handleConnectionStart}
                             onConnectionEnd={handleConnectionEnd}
                             onHandleClick={handleHandleClick}
