@@ -457,7 +457,7 @@ export default function ConfigPage() {
 
         // Parse node ID to determine type
         const idParts = node.id.split('-');
-        const type = idParts[0];
+        const type = node.type;
 
         if (type === 'crawler') {
             // Find crawler by ID or name
