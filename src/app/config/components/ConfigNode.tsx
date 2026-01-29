@@ -33,6 +33,7 @@ export default function ConfigNode({
             case 'forwarder': return `${baseStyle} border-orange-500 shadow-orange-900/20`;
             case 'formatter': return `${baseStyle} border-pink-500 shadow-pink-900/20`;
             case 'target': return `${baseStyle} border-green-500 shadow-green-900/20`;
+            case 'group': return `${baseStyle} border-dashed border-2 border-indigo-400 bg-indigo-900/80`;
             default: return `${baseStyle} border-gray-500`;
         }
     };
@@ -107,7 +108,7 @@ export default function ConfigNode({
 
             {/* Connection Handles */}
             {/* Output handle (right side) - for source connections */}
-            {(node.type === 'crawler' || node.type === 'translator' || node.type === 'formatter' || node.type === 'forwarder') && (
+            {(node.type === 'crawler' || node.type === 'translator' || node.type === 'formatter' || node.type === 'forwarder' || node.type === 'group') && (
                 <div
                     className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full border-2 cursor-pointer transition-all z-20 ${isConnectingSource
                         ? 'bg-blue-500 border-blue-300 ring-2 ring-blue-500 ring-opacity-50 scale-125'
@@ -128,7 +129,7 @@ export default function ConfigNode({
             )}
 
             {/* Input handle (left side) - for target connections */}
-            {(node.type === 'translator' || node.type === 'formatter' || node.type === 'target') && (
+            {(node.type === 'translator' || node.type === 'formatter' || node.type === 'target' || node.type === 'group') && (
                 <div
                     className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 cursor-pointer transition-all z-20 ${isConnecting
                         ? 'bg-green-500/50 border-green-400 animate-pulse hover:!bg-green-500 hover:scale-125'

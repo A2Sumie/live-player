@@ -45,3 +45,6 @@ next-env.d.ts
 
 # secrets script
 setup-secrets.sh
+
+# open-next
+.open-next/
