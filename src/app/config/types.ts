@@ -1,7 +1,7 @@
 export interface AppConfig {
     crawlers?: Array<Crawler>;
     cfg_crawler?: CrawlerConfig;
-    translators?: Array<Translator>; // Independent translators
+    processors?: Array<Processor>; // Independent processors (was translators)
     formatters?: Array<Formatter>;   // Independent formatters
     forward_targets?: Array<ForwardTarget>;
     cfg_forward_target?: ForwardTargetPlatformCommonConfig;
@@ -33,23 +33,30 @@ export interface CrawlerConfig {
     };
     immediate_notify?: boolean;
     user_agent?: string;
-    translator?: Translator; // Legacy: kept for backward compatibility
-    translator_id?: string;  // New: reference to independent translator
+    processor?: Processor; // Legacy: kept for backward compatibility
+    processor_id?: string;  // New: reference to independent processor
     engine?: string;
     sub_task_type?: Array<string>;
+    aggregation?: {
+        cron?: string;
+        prompt?: string;
+        processor_id?: string;
+    };
 }
 
-export interface Translator {
+export interface Processor {
     id?: string;  // Unique identifier when used as independent config
     name?: string; // Display name
     group?: string;
     provider: string; // 'Google' | 'BigModel' | 'ByteDance' | 'Deepseek' | 'Openai' | 'QwenMT' | 'None'
     api_key: string;
-    cfg_translator?: {
+    cfg_processor?: { // was cfg_translator
         prompt?: string;
         base_url?: string;
         name?: string;
         model_id?: string;
+        max_tokens?: number;
+        temperature?: number;
     };
 }
 
@@ -71,8 +78,9 @@ export interface Forwarder {
 export interface ForwarderConfig {
     cron?: string;
     media?: any;
-    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | string; // Legacy
+    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | 'tag' | 'img-tag' | 'img-tag-dynamic' | string;
     formatter_id?: string; // New: reference to independent formatter
+    keywords?: Array<string>; // New: Keyword filtering
 }
 
 export interface ForwardTarget {
@@ -86,7 +94,8 @@ export interface Formatter {
     id?: string;  // Auto-generated or user-defined
     name?: string;
     group?: string;
-    render_type: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary';
+    render_type: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | 'tag' | 'img-tag' | 'img-tag-dynamic';
+    // Add config for visualization if needed, e.g. watermark, etc.
 }
 
 export interface ForwardTargetPlatformCommonConfig {
@@ -97,7 +106,7 @@ export interface ForwardTargetPlatformCommonConfig {
     block_rules?: Array<any>;
 }
 
-export type NodeType = 'crawler' | 'translator' | 'forwarder' | 'formatter' | 'target' | 'group';
+export type NodeType = 'crawler' | 'processor' | 'forwarder' | 'formatter' | 'target' | 'group';
 
 export interface VisualNode {
     id: string;
@@ -108,7 +117,7 @@ export interface VisualNode {
     y: number;
     width: number;
     height: number;
-    parentId?: string; // For things like Translator which are nested in Crawler
+    parentId?: string; // For things like Processor which are nested in Crawler
 }
 
 export interface VisualConnection {
@@ -120,8 +129,8 @@ export interface VisualConnection {
 }
 
 export interface ConnectionMap {
-    'crawler-translator'?: Record<string, string>;   // crawler id -> translator id
-    'translator-formatter'?: Record<string, string[]>; // translator id -> formatter ids
+    'crawler-processor'?: Record<string, string>;   // crawler id -> processor id
+    'processor-formatter'?: Record<string, string[]>; // processor id -> formatter ids
     'crawler-formatter'?: Record<string, string[]>;  // crawler id -> formatter ids (direct)
     'formatter-target'?: Record<string, string[]>;   // formatter id -> target ids
     'forwarder-target'?: Record<string, string[]>;   // forwarder id -> target ids
