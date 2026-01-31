@@ -111,7 +111,7 @@ export default function ConfigPage() {
         // Get all data
         const crawlers = data.crawlers || [];
         const forwarders = data.forwarders || [];
-        const translators = data.translators || [];
+
         const formatters = data.formatters || [];
         const targets = data.forward_targets || [];
 
@@ -152,14 +152,15 @@ export default function ConfigPage() {
             });
         });
 
-        // Layer 1: Translators (Independent)
-        translators.forEach((translator, i) => {
-            const translatorId = getNodeId('translator', i, translator.id);
+        // Layer 1: Processors (Independent)
+        const processors = data.processors || [];
+        processors.forEach((processor, i) => {
+            const processorId = getNodeId('processor', i, processor.id);
             newNodes.push({
-                id: translatorId,
-                type: 'translator',
-                label: translator.name || `${translator.provider} Translator`,
-                data: translator,
+                id: processorId,
+                type: 'processor',
+                label: processor.name || `${processor.provider} Processor`,
+                data: processor,
                 x: 1 * (LAYER_WIDTH + LAYER_GAP) + 50,
                 y: i * (NODE_HEIGHT + NODE_GAP) + 100,
                 width: LAYER_WIDTH,
@@ -167,28 +168,28 @@ export default function ConfigPage() {
             });
         });
 
-        // Also handle legacy translators embedded in crawlers
+        // Also handle legacy processors embedded in crawlers
         crawlers.forEach((crawler, i) => {
-            if (crawler.cfg_crawler?.translator && !crawler.cfg_crawler.translator_id) {
-                const translatorId = `translator-legacy-${i}`;
+            if (crawler.cfg_crawler?.processor && !crawler.cfg_crawler.processor_id) {
+                const processorId = `processor-legacy-${i}`;
                 newNodes.push({
-                    id: translatorId,
-                    type: 'translator',
-                    label: `${crawler.cfg_crawler.translator.provider} (Legacy)`,
-                    data: crawler.cfg_crawler.translator,
+                    id: processorId,
+                    type: 'processor',
+                    label: `${crawler.cfg_crawler.processor.provider} (Legacy)`,
+                    data: crawler.cfg_crawler.processor,
                     x: 1 * (LAYER_WIDTH + LAYER_GAP) + 50,
-                    y: (translators.length + i) * (NODE_HEIGHT + NODE_GAP) + 100,
+                    y: (processors.length + i) * (NODE_HEIGHT + NODE_GAP) + 100,
                     width: LAYER_WIDTH,
                     height: NODE_HEIGHT,
                     parentId: getNodeId('crawler', i, crawler.name)
                 });
 
-                // Auto-connect legacy translator to its crawler
+                // Auto-connect legacy processor to its crawler
                 newConnections.push({
-                    id: `conn-c-t-legacy-${i}`,
+                    id: `conn-c-p-legacy-${i}`,
                     source: getNodeId('crawler', i, crawler.name),
-                    target: translatorId,
-                    type: 'crawler-translator'
+                    target: processorId,
+                    type: 'crawler-processor'
                 });
             }
         });
@@ -204,6 +205,9 @@ export default function ConfigPage() {
                     case 'img-with-meta': return 'Image + Meta';
                     case 'img-with-source': return 'Image + Source';
                     case 'img-with-source-summary': return 'Image + Source + Summary';
+                    case 'tag': return 'Tag Only';
+                    case 'img-tag': return 'Image + Tag';
+                    case 'img-tag-dynamic': return 'Dynamic Image + Tag';
                     default: return formatter.name || formatter.render_type;
                 }
             })();
@@ -239,29 +243,29 @@ export default function ConfigPage() {
         // Build connections from ConnectionMap
         const connMap = data.connections || {};
 
-        // Crawler -> Translator connections
-        Object.entries(connMap['crawler-translator'] || {}).forEach(([crawlerId, translatorId]) => {
+        // Crawler -> Processor connections
+        Object.entries(connMap['crawler-processor'] || {}).forEach(([crawlerId, processorId]) => {
             newConnections.push({
-                id: `conn-ct-${crawlerId}-${translatorId}`,
+                id: `conn-cp-${crawlerId}-${processorId}`,
                 source: crawlerId,
-                target: translatorId,
-                type: 'crawler-translator'
+                target: processorId,
+                type: 'crawler-processor'
             });
         });
 
-        // Translator -> Formatter connections
-        Object.entries(connMap['translator-formatter'] || {}).forEach(([translatorId, formatterIds]) => {
+        // Processor -> Formatter connections
+        Object.entries(connMap['processor-formatter'] || {}).forEach(([processorId, formatterIds]) => {
             formatterIds.forEach(formatterId => {
                 newConnections.push({
-                    id: `conn-tf-${translatorId}-${formatterId}`,
-                    source: translatorId,
+                    id: `conn-pf-${processorId}-${formatterId}`,
+                    source: processorId,
                     target: formatterId,
-                    type: 'translator-formatter'
+                    type: 'processor-formatter'
                 });
             });
         });
 
-        // Crawler -> Formatter connections (direct, no translator)
+        // Crawler -> Formatter connections (direct, no processor)
         Object.entries(connMap['crawler-formatter'] || {}).forEach(([crawlerId, formatterIds]) => {
             formatterIds.forEach(formatterId => {
                 newConnections.push({
@@ -467,26 +471,26 @@ export default function ConfigPage() {
             if (crawlerIndex !== undefined && crawlerIndex >= 0 && newConfig.crawlers) {
                 newConfig.crawlers[crawlerIndex] = newData as Crawler;
             }
-        } else if (type === 'translator') {
-            // Check if it's a legacy translator
+        } else if (type === 'processor') {
+            // Check if it's a legacy processor
             if (idParts[1] === 'legacy') {
                 const crawlerIndex = parseInt(idParts[2]);
                 if (newConfig.crawlers && newConfig.crawlers[crawlerIndex]) {
                     if (!newConfig.crawlers[crawlerIndex].cfg_crawler) {
                         newConfig.crawlers[crawlerIndex].cfg_crawler = {};
                     }
-                    newConfig.crawlers[crawlerIndex].cfg_crawler!.translator = newData;
+                    newConfig.crawlers[crawlerIndex].cfg_crawler!.processor = newData;
                 }
             } else {
-                // Independent translator
-                if (!newConfig.translators) newConfig.translators = [];
-                const translatorIndex = newConfig.translators.findIndex(t =>
-                    t.id === node.data.id || newConfig.translators?.indexOf(t) === parseInt(idParts[1])
+                // Independent processor
+                if (!newConfig.processors) newConfig.processors = [];
+                const processorIndex = newConfig.processors.findIndex(t =>
+                    t.id === node.data.id || newConfig.processors?.indexOf(t) === parseInt(idParts[1])
                 );
-                if (translatorIndex >= 0) {
-                    newConfig.translators[translatorIndex] = newData;
+                if (processorIndex >= 0) {
+                    newConfig.processors[processorIndex] = newData;
                 } else {
-                    newConfig.translators.push(newData);
+                    newConfig.processors.push(newData);
                 }
             }
         } else if (type === 'formatter') {
@@ -538,8 +542,8 @@ export default function ConfigPage() {
 
         // Define valid connection rules
         const validConnections: Record<string, string[]> = {
-            'crawler': ['translator', 'formatter'],
-            'translator': ['formatter'],
+            'crawler': ['processor', 'formatter'],
+            'processor': ['formatter'],
             'formatter': ['target'],
             'forwarder': ['target']
         };
@@ -667,13 +671,13 @@ export default function ConfigPage() {
             addedCount++;
 
             // Update Config
-            if (connType === 'crawler-translator') {
-                if (!newConfig.connections!['crawler-translator']) newConfig.connections!['crawler-translator'] = {};
-                (newConfig.connections!['crawler-translator'] as any)[source] = target;
+            if (connType === 'crawler-processor') {
+                if (!newConfig.connections!['crawler-processor']) newConfig.connections!['crawler-processor'] = {};
+                (newConfig.connections!['crawler-processor'] as any)[source] = target;
             } else {
                 // For arrays
                 let mapName: keyof ConnectionMap | null = null;
-                if (connType === 'translator-formatter') mapName = 'translator-formatter';
+                if (connType === 'processor-formatter') mapName = 'processor-formatter';
                 else if (connType === 'crawler-formatter') mapName = 'crawler-formatter';
                 else if (connType === 'formatter-target') mapName = 'formatter-target';
                 else if (connType === 'forwarder-target') mapName = 'forwarder-target';
@@ -710,7 +714,7 @@ export default function ConfigPage() {
         const connMap = newConfig.connections[connType];
         if (!connMap) return;
 
-        if (conn.type === 'crawler-translator') {
+        if (conn.type === 'crawler-processor') {
             delete connMap[conn.source];
         } else {
             const targets = connMap[conn.source] as string[];
@@ -744,6 +748,25 @@ export default function ConfigPage() {
         setHasChanges(true);
     };
 
+    const addNewProcessor = () => {
+        if (!config) return;
+
+        const newProcessor = {
+            id: `processor-${Date.now()}`,
+            name: `New Processor ${Date.now()}`,
+            provider: 'Global', // Default
+            api_key: ''
+        };
+
+        const newConfig = _.cloneDeep(config);
+        if (!newConfig.processors) newConfig.processors = [];
+        newConfig.processors.push(newProcessor);
+
+        setConfig(newConfig);
+        processGraph(newConfig);
+        setHasChanges(true);
+    };
+
     const handleCreateGroup = () => {
         if (selectedNodeIds.size === 0) return;
         const groupName = prompt('Enter group name:');
@@ -752,65 +775,8 @@ export default function ConfigPage() {
         const newConfig = _.cloneDeep(config);
         if (!newConfig) return;
 
-        // Update all selected nodes to have this group
-        // We need to iterate through all node lists in config
-        const updateGroup = (list: any[]) => {
-            if (!list) return;
-            list.forEach(item => {
-                // Determine ID - this is tricky because not all config items have consistent IDs
-                // In processGraph we generate IDs. Here we need to match the visual node ID to the config item
-                // Simplest way: loop through our current 'nodes' state, find selected ones, and match back to config by reference or ID?
-                // Actually, simple way: we already know how handleNodeSave works.
-                // Let's reuse the logic but for multiple nodes.
-            });
-        };
-
-        // Easier: visual nodes contain a reference to 'data'. But 'data' in visual node might be a copy?
-        // In processGraph: `data: crawler` -> It's a reference if shallow. 
-        // `const configData = await configRes.json()` -> `setConfig(configData)`.
-        // `processGraph(configData)` -> `data: crawler` is a reference to the object inside `configData`.
-        // So modifying `node.data.group` directly *should* work if we then call setConfig with a new object?
-        // No, React state is immutable-ish. better to find paths.
-
-        // Brute force: iterate all lists in newConfig
-        const setGroup = (item: any) => { item.group = groupName; };
-
-        selectedNodeIds.forEach(visualId => {
-            const visualNode = nodes.find(n => n.id === visualId);
-            if (!visualNode) return;
-            const parts = visualId.split('-');
-            const type = parts[0];
-            const idx = parseInt(parts[1]); // This works for array-indexed items (crawler, etc generated IDs often have index or we can infer)
-
-            // Re-implement finding logic from handleNodeSave roughly
-            if (type === 'crawler') {
-                const item = newConfig.crawlers?.find(c => c === visualNode.data || (newConfig.crawlers?.indexOf(c) === idx)); // Reference check won't work easily if we deep cloned newConfig.
-                // Use index from visual ID logic?
-                // processGraph: `getNodeId('crawler', i, crawler.name)` -> `crawler-i` if name empty? No, `crawler.name`.
-                // If ID is `crawler-0`, it's index 0. If `crawler-UniqueName`, it's name match.
-                // Let's use the visualNode.data.name or id to find match.
-
-                if (newConfig.crawlers) {
-                    // Try to find by object equality with the *original* config (which visualNode.data points to)
-                    // But we have newConfig...
-                    // Let's rely on name/id.
-                    let found = newConfig.crawlers.find(c => c.name === visualNode.data.name);
-                    if (found) found.group = groupName;
-                }
-            } else if (type === 'translator') {
-                // ... similar ...
-                // To keep it simple, let's just use the `handleNodeSave` philosophy:
-                // We will manually trigger a save for each selected node.
-                // Ideally we batch this.
-            }
-        });
-
-        // Optimized approach: 
         const selectedNodes = nodes.filter(n => selectedNodeIds.has(n.id));
         selectedNodes.forEach(node => {
-            // We'll trust the user to save/refresh.
-            // But actually, let's just do a dirty update on the reference if possible?
-            // No, let's update newConfig properly.
             const [type] = node.id.split('-');
             if (type === 'crawler') {
                 const c = newConfig.crawlers?.find(x => x.name === node.data.name);
@@ -824,9 +790,9 @@ export default function ConfigPage() {
             } else if (type === 'target') {
                 const t = newConfig.forward_targets?.find(x => x.id === node.data.id);
                 if (t) t.group = groupName;
-            } else if (type === 'translator') {
-                const t = newConfig.translators?.find(x => x.id === node.data.id);
-                if (t) t.group = groupName;
+            } else if (type === 'processor') {
+                const p = newConfig.processors?.find(x => x.id === node.data.id);
+                if (p) p.group = groupName;
             }
         });
 
@@ -834,7 +800,7 @@ export default function ConfigPage() {
         processGraph(newConfig);
         setHasChanges(true);
         setSelectedNodeIds(new Set());
-    }
+    };
 
     const addNewFormatter = () => {
         if (!config) return;
@@ -927,9 +893,9 @@ export default function ConfigPage() {
                 if (newConfig.forwarders) {
                     newConfig.forwarders = newConfig.forwarders.filter(f => f.id !== data.id);
                 }
-            } else if (type === 'translator') {
-                if (!visualNode.id.includes('legacy') && newConfig.translators) {
-                    newConfig.translators = newConfig.translators.filter(t => t.id !== data.id);
+            } else if (type === 'processor') {
+                if (!visualNode.id.includes('legacy') && newConfig.processors) {
+                    newConfig.processors = newConfig.processors.filter(p => p.id !== data.id);
                 }
             } else if (type === 'formatter') {
                 if (newConfig.formatters) {
