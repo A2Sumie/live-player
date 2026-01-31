@@ -48,3 +48,6 @@ setup-secrets.sh
 
 # open-next
 .open-next/
+
+# ignored security files
+streamserv.zip
