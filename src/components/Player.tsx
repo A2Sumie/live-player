@@ -45,6 +45,28 @@ function _Artplayer({
         hls.loadSource(url);
         hls.attachMedia(video);
         (art as any).hls = hls;
+
+        // Error Handling
+        hls.on(Hls.Events.ERROR, function (event, data) {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                console.log("⚠️ Network error, trying to recover...");
+                art.notice.show = "信号中断，正在重连...";
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                console.log("⚠️ Media error, trying to recover...");
+                hls.recoverMediaError();
+                break;
+              default:
+                art.notice.show = "无法播放，请手动刷新";
+                hls.destroy();
+                break;
+            }
+          }
+        });
+
         art.on("destroy", () => hls.destroy());
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
@@ -62,28 +84,53 @@ function _Artplayer({
       customType: {
         m3u8: playM3u8,
       },
+      controls: [
+        {
+          name: 'pip',
+          index: 20,
+          position: 'right',
+          html: '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z" fill="currentColor"/></svg>',
+          tooltip: 'Picture in Picture',
+          click: function (this: Artplayer) {
+            if (document.pictureInPictureEnabled) {
+              if (document.pictureInPictureElement) {
+                document.exitPictureInPicture();
+              } else {
+                this.video.requestPictureInPicture();
+              }
+            } else if ((this.video as any).webkitSupportsPresentationMode && typeof (this.video as any).webkitSetPresentationMode === 'function') {
+              // iOS Safari specific
+              const mode = (this.video as any).webkitPresentationMode;
+              (this.video as any).webkitSetPresentationMode(mode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+            } else {
+              this.notice.show = 'Picture-in-Picture not supported';
+            }
+          },
+          mounted: function (el) {
+            // Only show manual control if default PiP might rely on APIs not detected or if we want to override.
+            // But actually, replacing the built-in 'pip' is better.
+            // If we name it 'pip', it might override or duplicate.
+            // Let's rely on this custom one being added.
+          }
+        }
+      ],
       plugins: [
         artplayerPluginHlsControl({
           quality: {
             control: true,
             setting: true,
             getName: (level: any) => level.height + 'P',
-            // I18n
             title: 'Quality',
             auto: 'Auto',
           },
           audio: {
-            // Show audios in control
             control: true,
-            // Show audios in setting
             setting: true,
-            // Get the audio name from track
             getName: (track: any) => track.name,
-            // I18n
             title: 'Audio',
             auto: 'Auto',
           }
-        })
+        }),
       ]
     });
 
@@ -130,7 +177,7 @@ export default function PlayerComponent({ player }: PlayerProps) {
     isLive: true,
     muted: false,
     autoplay: false,
-    pip: true,
+    pip: false,
     autoSize: true,
     autoMini: true,
     screenshot: true,
@@ -152,6 +199,10 @@ export default function PlayerComponent({ player }: PlayerProps) {
     lang: 'zh-cn',
     moreVideoAttr: {
       crossOrigin: 'anonymous',
+      // @ts-ignore
+      'webkit-playsinline': true,
+      // @ts-ignore
+      playsInline: true,
     },
   };
 
