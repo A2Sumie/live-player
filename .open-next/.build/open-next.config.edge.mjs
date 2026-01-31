@@ -1,5 +1,5 @@
 // node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.js
-var cloudflareContextSymbol = Symbol.for("__cloudflare-context__");
+var cloudflareContextSymbol = /* @__PURE__ */ Symbol.for("__cloudflare-context__");
 function getCloudflareContext(options = { async: false }) {
   return options.async ? getCloudflareContextAsync() : getCloudflareContextSync();
 }

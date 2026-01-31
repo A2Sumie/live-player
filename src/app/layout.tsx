@@ -13,6 +13,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { ThemeProvider } from "@/components/ThemeProvider";
+
 export const metadata: Metadata = {
   title: "N2NJ.MOE", //
   description: "为22/7同好的转播站",
@@ -34,9 +36,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <WithAuth>
-          {children}
-        </WithAuth>
+        <ThemeProvider>
+          <WithAuth>
+            {children}
+          </WithAuth>
+        </ThemeProvider>
       </body>
     </html>
   );

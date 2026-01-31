@@ -8,6 +8,7 @@ import PlayerCard from '@/components/PlayerCard';
 import PlayerModal from '@/components/PlayerModal';
 import { useAuth } from '@/middleware/WithAuth';
 import type { Player } from '@/lib/db';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -66,7 +67,7 @@ export default function Home() {
 
   const handleSubmitPlayer = async (playerData: Omit<Player, 'id' | 'createdAt' | 'updatedAt' | 'coverImage'>) => {
     setSubmitting(true);
-    
+
     try {
       const isEditing = !!editingPlayer;
       const url = isEditing ? `/api/players/${editingPlayer.id}` : '/api/players';
@@ -83,13 +84,13 @@ export default function Home() {
 
       if (response.ok) {
         const savedPlayer = await response.json() as Player;
-        
+
         if (isEditing) {
           setPlayers(prev => prev.map(p => p.id === editingPlayer.id ? savedPlayer : p));
         } else {
           setPlayers(prev => [savedPlayer, ...prev]);
         }
-        
+
         setModalOpen(false);
         setEditingPlayer(null);
       } else {
@@ -106,10 +107,10 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -118,26 +119,30 @@ export default function Home() {
   return (
     // 修改点 1: 添加背景图片样式
     // 请将您的背景图命名为 background.png 并放入 public 文件夹，或者修改下方的 url
-    <div 
-      className="min-h-screen bg-gray-50 py-8 bg-cover bg-center bg-no-repeat bg-fixed"
+    <div
+      className="min-h-screen bg-background text-foreground py-8 bg-cover bg-center bg-no-repeat bg-fixed relative transition-colors duration-300"
       style={{
         backgroundImage: 'url("/background.png")', // 这里设置背景图
         // 如果您希望背景是半透明叠加在灰色背景上，可以使用:
         // backgroundImage: 'linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.8)), url("/background.png")'
       }}
     >
+      <div className="absolute top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           {/* 修改点 2: 将原来的 h1 替换为两行自定义文字 */}
           <div className="mb-6">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            <h1 className="text-4xl font-bold text-foreground mb-2">
               TV.N2NJ.MOE 共星组呈上
             </h1>
-            <h2 className="text-xl text-gray-700 font-medium">
+            <h2 className="text-xl text-foreground/80 font-medium">
               为22/7以及秋系同好的转播站 基于ChocoLZS/live-player 群组@Q.161717573
             </h2>
           </div>
-          
+
           <AdminControls />
           {user?.role === 'admin' && (
             <div className="flex justify-center mb-8">
@@ -148,7 +153,7 @@ export default function Home() {
 
         {players.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 text-lg mb-4">No players found</p>
+            <p className="text-foreground/60 text-lg mb-4">No players found</p>
             {user?.role === 'admin' && (
               <AddPlayerButton onClick={handleAddPlayer} />
             )}

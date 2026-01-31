@@ -1,10 +1,7 @@
-globalThis.openNextDebug = false;globalThis.openNextVersion = "3.9.13";
+globalThis.openNextDebug = false;globalThis.openNextVersion = "3.9.14";
 
 // node_modules/@opennextjs/cloudflare/dist/api/durable-objects/sharded-tag-cache.js
 import { DurableObject } from "cloudflare:workers";
-
-// node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.js
-var cloudflareContextSymbol = Symbol.for("__cloudflare-context__");
 
 // node_modules/@opennextjs/cloudflare/dist/api/overrides/internal.js
 var debugCache = (name, ...args) => {

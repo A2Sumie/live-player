@@ -12,12 +12,12 @@ interface PlayerCardProps {
 
 export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps) {
   const { user } = useAuth();
-  
+
   // Determine cover image source - convert binary data to base64 on client side
   const getCoverImageSrc = () => {
     if (player.coverImage) {
       // Handle both ArrayBuffer (from SSR) and Array (from API)
-      const uint8Array = Array.isArray(player.coverImage) 
+      const uint8Array = Array.isArray(player.coverImage)
         ? new Uint8Array(player.coverImage)
         : new Uint8Array(player.coverImage as ArrayBuffer);
       const base64 = btoa(String.fromCharCode(...uint8Array));
@@ -25,7 +25,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     }
     return player.coverUrl || null;
   };
-  
+
   const coverImageSrc = getCoverImageSrc();
 
   const handleEdit = (e: React.MouseEvent) => {
@@ -41,14 +41,14 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     if (!confirm('Are you sure you want to delete this player?')) {
       return;
     }
-    
+
     onDelete?.(player);
   };
 
   return (
     <div className="group relative">
       <Link href={`/player/${player.pId}`} className="block">
-        <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
           {coverImageSrc && (
             <div className="aspect-w-16 aspect-h-9 relative">
               <img
@@ -81,17 +81,17 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
             </div>
           )}
           <div className="p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-blue-600">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
               {player.name}
             </h3>
             {player.description && (
-              <p className="text-gray-600 text-sm line-clamp-2 mb-3">
+              <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-3">
                 {player.description}
               </p>
             )}
             {player.announcement && (
-              <div className="p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded">
-                <p className="text-yellow-800 text-xs">
+              <div className="p-2 bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-400 dark:border-yellow-600 rounded">
+                <p className="text-yellow-800 dark:text-yellow-200 text-xs">
                   {player.announcement}
                 </p>
               </div>
