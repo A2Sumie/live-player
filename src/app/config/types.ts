@@ -78,7 +78,7 @@ export interface Forwarder {
 export interface ForwarderConfig {
     cron?: string;
     media?: any;
-    render_type?: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | 'tag' | 'img-tag' | 'img-tag-dynamic' | string;
+    render_type?: 'text' | 'tag' | 'img' | 'img-tag' | 'img-tag-dynamic' | 'img-with-meta' | string;
     formatter_id?: string; // New: reference to independent formatter
     keywords?: Array<string>; // New: Keyword filtering
 }
@@ -94,7 +94,7 @@ export interface Formatter {
     id?: string;  // Auto-generated or user-defined
     name?: string;
     group?: string;
-    render_type: 'text' | 'img' | 'img-with-meta' | 'img-with-source' | 'img-with-source-summary' | 'tag' | 'img-tag' | 'img-tag-dynamic';
+    render_type: 'text' | 'tag' | 'img' | 'img-tag' | 'img-tag-dynamic' | 'img-with-meta';
     // Add config for visualization if needed, e.g. watermark, etc.
 }
 

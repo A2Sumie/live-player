@@ -18,10 +18,12 @@ declare module 'artplayer' {
 function _Artplayer({
   option,
   getInstance,
+  debug = false,
   ...rest
 }: {
   option: Omit<Option, "container">;
   getInstance?: (art: Artplayer) => void;
+  debug?: boolean;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const artRef = useRef<HTMLDivElement | null>(null);
 
@@ -32,6 +34,7 @@ function _Artplayer({
         const originUrlObj = new URL(url);
         const queryParms = originUrlObj.searchParams;
         const hls = new Hls({
+          debug: debug, // Enable debug if requested
           xhrSetup(xhr, tsUrl) {
             if (tsUrl.includes(".ts") || tsUrl.endsWith(".m3u8")) {
               const tsUrlObj = new URL(tsUrl);
@@ -152,9 +155,10 @@ function _Artplayer({
 
 interface PlayerProps {
   player: Player;
+  debug?: boolean;
 }
 
-export default function PlayerComponent({ player }: PlayerProps) {
+export default function PlayerComponent({ player, debug = false }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
 
   // Determine poster image source - convert binary data to base64 on client side
@@ -204,7 +208,18 @@ export default function PlayerComponent({ player }: PlayerProps) {
       // @ts-ignore
       playsInline: true,
     },
+    // Pass debug config to specific plugins if supported
   };
+
+  // If debug mode is on, we might want to expose HLS config
+  // Note: ArtPlayer HLS logic is inside the customType 'm3u8' callback
+  // We can't easily pass it there via option unless we modify the callback
+  // But we use a ref or closure.
+
+  // Actually, standard ArtPlayer allows extending.
+  // We'll handle the HLS debug in the effect below if reasonable,
+  // OR we modify the _Artplayer nested component to accept debug prop.
+
 
   return (
     <div className="flex flex-col h-screen">
@@ -231,6 +246,7 @@ export default function PlayerComponent({ player }: PlayerProps) {
           getInstance={(art) => {
             artPlayerRef.current = art;
           }}
+          debug={debug}
           className="w-full h-full flex"
           style={{ minHeight: '400px' }}
         />
