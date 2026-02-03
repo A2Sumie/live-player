@@ -56,6 +56,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 task_type: data.task_type || 'article',
                 cron: data.cfg_forwarder?.cron || '',
                 render_type: data.cfg_forwarder?.render_type || 'text',
+                batch_mode: (data.cfg_forwarder as any)?.batch_mode || false, // NEW
                 websites: data.websites ? data.websites.join('\n') : '',
                 origin: data.origin || '',
                 paths: data.paths ? data.paths.join('\n') : '',
@@ -84,6 +85,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 block_until: data.cfg_platform?.block_until || '',
                 accept_keywords: data.cfg_platform?.accept_keywords ? data.cfg_platform.accept_keywords.join('\n') : '',
                 filter_keywords: data.cfg_platform?.filter_keywords ? data.cfg_platform.filter_keywords.join('\n') : '',
+                bypass_batch: (data.cfg_platform as any)?.bypass_batch || false, // NEW
                 tg_token: cfg.token || '',
                 tg_chat_id: cfg.chat_id || '',
                 qq_url: cfg.url || '',
@@ -209,6 +211,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
             if (!updatedData.cfg_forwarder) updatedData.cfg_forwarder = {};
             updatedData.cfg_forwarder.cron = formData.cron;
             updatedData.cfg_forwarder.render_type = formData.render_type;
+            (updatedData.cfg_forwarder as any).batch_mode = formData.batch_mode; // NEW
 
             if (!updatedData.cfg_forward_target) updatedData.cfg_forward_target = {};
             updatedData.cfg_forward_target.accept_keywords = splitLines(formData.accept_keywords);
@@ -270,6 +273,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
 
             platformConfig.accept_keywords = splitLines(formData.accept_keywords);
             platformConfig.filter_keywords = splitLines(formData.filter_keywords);
+            platformConfig.bypass_batch = formData.bypass_batch; // NEW
 
             updatedData.cfg_platform = platformConfig;
             updatedData.group = formData.group;
@@ -414,7 +418,15 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 ]}
                                 onChange={(v: string) => handleChange('render_type', v)}
                             />
-                            <FormInput label="Execution Cron" value={formData.cron} onChange={(v: string) => handleChange('cron', v)} placeholder="* * * * *" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormInput label="Execution Cron" value={formData.cron} onChange={(v: string) => handleChange('cron', v)} placeholder="* * * * *" />
+                                <div className="flex items-center pt-6">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-white/80">
+                                        <input type="checkbox" checked={formData.batch_mode || false} onChange={(e) => handleChange('batch_mode', e.target.checked)} className="rounded border-white/20 bg-black/30" />
+                                        Batch Mode (Hourly)
+                                    </label>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <FormTextarea label="Accept Keywords" value={formData.accept_keywords} onChange={(v: string) => handleChange('accept_keywords', v)} placeholder="One per line" fontMono />
                                 <FormTextarea label="Filter Keywords (Block)" value={formData.filter_keywords} onChange={(v: string) => handleChange('filter_keywords', v)} placeholder="One per line" fontMono />
@@ -492,6 +504,12 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 <div className="grid grid-cols-2 gap-4">
                                     <FormTextarea label="Accept Keywords" value={formData.accept_keywords} onChange={(v: string) => handleChange('accept_keywords', v)} placeholder="One per line" fontMono />
                                     <FormTextarea label="Filter Keywords" value={formData.filter_keywords} onChange={(v: string) => handleChange('filter_keywords', v)} placeholder="One per line" fontMono />
+                                </div>
+                                <div className="flex items-center mt-2 mb-2">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-white/80">
+                                        <input type="checkbox" checked={formData.bypass_batch || false} onChange={(e) => handleChange('bypass_batch', e.target.checked)} className="rounded border-white/20 bg-black/30" />
+                                        Bypass Batch (Sent Immediately)
+                                    </label>
                                 </div>
                                 <FormTextarea label="Replace Regex (String or JSON)" value={formData.replace_regex} onChange={(v: string) => handleChange('replace_regex', v)} fontMono />
                                 <FormInput label="Block Until (Time)" value={formData.block_until} onChange={(v: string) => handleChange('block_until', v)} placeholder="e.g. 1h" />
