@@ -1,12 +1,17 @@
 import { notFound } from 'next/navigation';
 import { getDb, players, type Player } from '@/lib/db';
-import PlayerComponent from '@/components/Player';
+
 import { eq } from 'drizzle-orm';
+
+import PlayerWrapper from '@/components/PlayerWrapper';
 import { cache as memoryCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { cache } from 'react';
+import { logger } from '@/lib/logger';
+import { signStreamUrl } from '@/lib/stream-auth';
 
 interface PlayerPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 const getPlayer = cache(async (pId: string): Promise<Player | null> => {
@@ -23,7 +28,7 @@ const getPlayer = cache(async (pId: string): Promise<Player | null> => {
 
     return player;
   } catch (error) {
-    console.error('Error fetching player:', error);
+    logger.error('Error fetching player', error, 'PlayerPage:getPlayer');
     return null;
   }
 });
@@ -44,46 +49,49 @@ export async function generateMetadata({ params }: PlayerPageProps) {
   };
 }
 
-export default async function PlayerPage({ params }: PlayerPageProps) {
+export default async function PlayerPage({ params, searchParams }: PlayerPageProps) {
   const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const isDebug = resolvedSearchParams?.debug === '1';
+
   try {
-    console.log(`[PlayerPage] Fetching info for ID: ${resolvedParams.id}`);
+    if (isDebug) logger.info(`Fetching info for ID: ${resolvedParams.id}`, null, 'PlayerPage');
     const player = await getPlayer(resolvedParams.id);
 
     if (!player) {
-      console.error(`[PlayerPage] ❌ Player config not found for ID: ${resolvedParams.id}`);
+      logger.error(`Player config not found for ID: ${resolvedParams.id}`, null, 'PlayerPage');
       notFound();
     }
 
-    // Assuming player.streamUrl exists based on the new code structure
-    // If player.url was the original field, it needs to be mapped to streamUrl or adjusted.
-    // For now, I'll assume player.streamUrl is the correct field name based on the provided edit.
-    console.log(`[PlayerPage] ✅ Found player: ${player.name}, URL: ${player.url}`);
+    if (isDebug) logger.info(`Found player: ${player.name}, URL: ${player.url}`, null, 'PlayerPage');
 
     if (!player.url) {
-      console.error(`[PlayerPage] ❌ ID ${resolvedParams.id} has empty url!`);
+      const msg = `ID ${resolvedParams.id} has empty url!`;
+      logger.error(msg, null, 'PlayerPage');
       throw new Error("Stream URL is missing in database configuration");
     }
 
-    const { signStreamUrl } = await import('@/lib/stream-auth');
+
+
     const signedUrl = signStreamUrl(player.url);
-    console.log(`[PlayerPage] 🔏 Signed URL: ${signedUrl}`);
+    if (isDebug) logger.info(`Signed URL: ${signedUrl}`, null, 'PlayerPage');
 
     // Update player object with signed URL
     const signedPlayer = { ...player, url: signedUrl };
 
     return (
       <div className="min-h-screen bg-black">
-        <PlayerComponent player={signedPlayer} />
+        <PlayerWrapper player={signedPlayer} debug={isDebug} />
       </div>
     );
   } catch (e: any) {
-    console.error(`[PlayerPage] 💥 Critical Error: ${e.message}`, e);
+    logger.error(`Critical Error loading player ${resolvedParams.id}`, e, 'PlayerPage');
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="p-4 border border-red-500 rounded bg-red-900/50">
           <h1 className="text-xl font-bold mb-2">Error Loading Player</h1>
           <p className="font-mono text-sm">{e?.message || "Unknown Error"}</p>
+          {isDebug && <pre className="mt-2 text-xs opacity-50 whitespace-pre-wrap">{e?.stack}</pre>}
         </div>
       </div>
     );

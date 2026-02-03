@@ -40,6 +40,15 @@ export const schedules = sqliteTable('schedules', {
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const systemLogs = sqliteTable('system_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  level: text('level').notNull(), // 'info', 'warn', 'error'
+  message: text('message').notNull(),
+  details: text('details'), // JSON string, stack trace, etc.
+  source: text('source'), // e.g., 'PlayerPage', 'Auth', 'Scheduler'
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Player = typeof players.$inferSelect;
 export type NewPlayer = typeof players.$inferInsert;
 export type PlayerWithBase64Image = Player & { coverImageBase64: string | null };
@@ -49,3 +58,6 @@ export type NewAdmin = typeof admins.$inferInsert;
 
 export type Schedule = typeof schedules.$inferSelect;
 export type NewSchedule = typeof schedules.$inferInsert;
+
+export type SystemLog = typeof systemLogs.$inferSelect;
+export type NewSystemLog = typeof systemLogs.$inferInsert;

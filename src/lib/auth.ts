@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 import { getDb, admins } from './db';
 import { eq } from 'drizzle-orm';
@@ -14,6 +14,7 @@ if (!process.env.ADMIN_ACCOUNT || !process.env.ADMIN_PASSWORD) {
 }
 
 const JWT_SECRET: string = process.env.JWT_SECRET;
+const JWT_SECRET_KEY = new TextEncoder().encode(JWT_SECRET);
 const ADMIN_ACCOUNT: string = process.env.ADMIN_ACCOUNT;
 const ADMIN_PASSWORD: string = process.env.ADMIN_PASSWORD;
 
@@ -22,15 +23,20 @@ export interface JWTPayload {
   role: 'admin' | 'user';
   iat?: number;
   exp?: number;
+  [key: string]: any; // Allow other standard claims
 }
 
-export function signToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+export async function signToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(JWT_SECRET_KEY);
 }
 
-export function verifyToken(token: string): JWTPayload | null {
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
+    return payload as unknown as JWTPayload;
   } catch {
     return null;
   }
@@ -117,15 +123,15 @@ export async function getCurrentUser(): Promise<JWTPayload | null> {
     return null;
   }
 
-  return verifyToken(token);
+  return await verifyToken(token);
 }
 
-export function getCurrentUserFromRequest(request: NextRequest): JWTPayload | null {
+export async function getCurrentUserFromRequest(request: NextRequest): Promise<JWTPayload | null> {
   const token = request.cookies.get('auth-token')?.value;
 
   if (!token) {
     return null;
   }
 
-  return verifyToken(token);
+  return await verifyToken(token);
 }

@@ -201,13 +201,11 @@ export default function ConfigPage() {
             const label = (() => {
                 switch (formatter.render_type) {
                     case 'text': return 'Text Only';
-                    case 'img': return 'Image Card';
-                    case 'img-with-meta': return 'Image + Meta';
-                    case 'img-with-source': return 'Image + Source';
-                    case 'img-with-source-summary': return 'Image + Source + Summary';
                     case 'tag': return 'Tag Only';
+                    case 'img': return 'Image Card';
                     case 'img-tag': return 'Image + Tag';
                     case 'img-tag-dynamic': return 'Dynamic Image + Tag';
+                    case 'img-with-meta': return 'Image + Meta';
                     default: return formatter.name || formatter.render_type;
                 }
             })();
@@ -1046,6 +1044,12 @@ export default function ConfigPage() {
                             <span>💾</span> Save Changes
                         </button>
                     )}
+                    <a
+                        href="/config/logs"
+                        className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded text-sm transition-colors flex items-center gap-2"
+                    >
+                        📋 Logs
+                    </a>
                     <button
                         onClick={() => setShowDebug(!showDebug)}
                         className={`px-3 py-1 rounded text-sm transition-colors ${showDebug ? 'bg-purple-600 text-white' : 'bg-white/5 hover:bg-white/10'}`}
@@ -1092,6 +1096,12 @@ export default function ConfigPage() {
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
                 >
                     <span className="text-lg">+</span> Add Crawler
+                </button>
+                <button
+                    onClick={addNewProcessor}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                >
+                    <span className="text-lg">+</span> Add Processor
                 </button>
                 <button
                     onClick={addNewFormatter}
@@ -1206,7 +1216,7 @@ export default function ConfigPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                            <span>Translator</span>
+                            <span>Processor</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-pink-500"></div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { VisualNode, Crawler, Translator, Forwarder, ForwardTarget, AppConfig } from '../types';
+import { VisualNode, Crawler, Processor, Forwarder, ForwardTarget, AppConfig } from '../types';
 
 interface ConfigEditorProps {
     node: VisualNode;
@@ -35,18 +35,18 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 group: data.group || '',
                 raw_config: JSON.stringify(data.cfg_crawler || {}, null, 2),
             });
-        } else if (node.type === 'translator') {
+        } else if (node.type === 'processor') {
             const data = node.data as any;
             setFormData({
                 id: data.id || '',
                 name: data.name || '',
                 provider: data.provider || 'Google',
                 api_key: data.api_key || '',
-                model_id: data.cfg_translator?.model_id || '',
-                prompt: data.cfg_translator?.prompt || '',
-                base_url: data.cfg_translator?.base_url || '',
+                model_id: data.cfg_processor?.model_id || '',
+                prompt: data.cfg_processor?.prompt || '',
+                base_url: data.cfg_processor?.base_url || '',
                 group: data.group || '',
-                raw_config: JSON.stringify(data.cfg_translator || {}, null, 2),
+                raw_config: JSON.stringify(data.cfg_processor || {}, null, 2),
             });
         } else if (node.type === 'forwarder') {
             const data = node.data as Forwarder;
@@ -180,20 +180,20 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 }
             } catch (e) { }
 
-        } else if (node.type === 'translator') {
+        } else if (node.type === 'processor') {
             updatedData.id = formData.id || node.data.id;
             updatedData.name = formData.name;
             updatedData.provider = formData.provider;
             updatedData.api_key = formData.api_key;
-            if (!updatedData.cfg_translator) updatedData.cfg_translator = {};
-            updatedData.cfg_translator.model_id = formData.model_id;
-            updatedData.cfg_translator.prompt = formData.prompt;
-            updatedData.cfg_translator.base_url = formData.base_url;
+            if (!updatedData.cfg_processor) updatedData.cfg_processor = {};
+            updatedData.cfg_processor.model_id = formData.model_id;
+            updatedData.cfg_processor.prompt = formData.prompt;
+            updatedData.cfg_processor.base_url = formData.base_url;
             updatedData.group = formData.group;
             try {
                 if (formData.raw_config) {
                     const raw = JSON.parse(formData.raw_config);
-                    Object.assign(updatedData.cfg_translator, raw);
+                    Object.assign(updatedData.cfg_processor, raw);
                 }
             } catch (e) { }
 
@@ -352,15 +352,15 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                         </>
                     )}
 
-                    {/* Translator / LLM Editor */}
-                    {node.type === 'translator' && (
+                    {/* Processor / LLM Editor */}
+                    {node.type === 'processor' && (
                         <>
                             <div className="mb-4 bg-purple-500/10 p-3 rounded border border-purple-500/30 text-xs text-purple-200">
-                                {node.data.id ? 'Independent translator node' : 'Legacy translator attached to crawler'}
+                                {node.data.id ? 'Independent processor node' : 'Legacy processor attached to crawler'}
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <FormInput label="ID (Auto-generated if empty)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="translator-1" />
-                                <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} placeholder="My Translator" />
+                                <FormInput label="ID (Auto-generated if empty)" value={formData.id} onChange={(v: string) => handleChange('id', v)} placeholder="processor-1" />
+                                <FormInput label="Name" value={formData.name} onChange={(v: string) => handleChange('name', v)} placeholder="My Processor" />
                             </div>
                             <FormInput label="Group Tag" value={formData.group} onChange={(v: string) => handleChange('group', v)} placeholder="Grouping label" />
                             <FormSelect
@@ -406,10 +406,11 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 value={formData.render_type}
                                 options={[
                                     { label: 'Text Only', value: 'text' },
-                                    { label: 'Standard Image Card', value: 'img' },
-                                    { label: 'Image with Metadata', value: 'img-with-meta' },
-                                    { label: 'Image with Source Label', value: 'img-with-source' },
-                                    { label: 'Image with Source + Summary', value: 'img-with-source-summary' }
+                                    { label: 'Tag (Platform Label + Media)', value: 'tag' },
+                                    { label: 'Image Card', value: 'img' },
+                                    { label: 'Image Card + Tag', value: 'img-tag' },
+                                    { label: 'Image Card + Tag (Skip Text-only)', value: 'img-tag-dynamic' },
+                                    { label: 'Image Card + Metadata', value: 'img-with-meta' }
                                 ]}
                                 onChange={(v: string) => handleChange('render_type', v)}
                             />
@@ -436,10 +437,11 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                                 value={formData.render_type}
                                 options={[
                                     { label: 'Text Only', value: 'text' },
-                                    { label: 'Standard Image Card', value: 'img' },
-                                    { label: 'Image with Metadata', value: 'img-with-meta' },
-                                    { label: 'Image with Source Label', value: 'img-with-source' },
-                                    { label: 'Image with Source + Summary', value: 'img-with-source-summary' }
+                                    { label: 'Tag (Platform Label + Media)', value: 'tag' },
+                                    { label: 'Image Card', value: 'img' },
+                                    { label: 'Image Card + Tag', value: 'img-tag' },
+                                    { label: 'Image Card + Tag (Skip Text-only)', value: 'img-tag-dynamic' },
+                                    { label: 'Image Card + Metadata', value: 'img-with-meta' }
                                 ]}
                                 onChange={(v: string) => handleChange('render_type', v)}
                             />
