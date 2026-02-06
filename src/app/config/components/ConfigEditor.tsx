@@ -9,7 +9,7 @@ interface ConfigEditorProps {
     availableCookies?: string[];
 }
 
-export default function ConfigEditor({ node, onSave, onClose, availableCookies = [] }: ConfigEditorProps) {
+export default function ConfigEditor({ node, onSave, onClose, fullConfig, availableCookies = [] }: ConfigEditorProps) {
     const [formData, setFormData] = useState<any>({});
     const [jsonError, setJsonError] = useState('');
     const [importLoading, setImportLoading] = useState(false);
@@ -61,7 +61,7 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                 origin: data.origin || '',
                 paths: data.paths ? data.paths.join('\n') : '',
                 task_title: data.task_title || '',
-                subscribers: data.subscribers ? data.subscribers.map(s => typeof s === 'string' ? s : s.id) : [],
+                // subscribers removed - now handled by graph connections
                 accept_keywords: data.cfg_forward_target?.accept_keywords ? data.cfg_forward_target.accept_keywords.join('\n') : '',
                 filter_keywords: data.cfg_forward_target?.filter_keywords ? data.cfg_forward_target.filter_keywords.join('\n') : '',
                 group: data.group || '',
@@ -430,6 +430,28 @@ export default function ConfigEditor({ node, onSave, onClose, availableCookies =
                             <div className="grid grid-cols-2 gap-4">
                                 <FormTextarea label="Accept Keywords" value={formData.accept_keywords} onChange={(v: string) => handleChange('accept_keywords', v)} placeholder="One per line" fontMono />
                                 <FormTextarea label="Filter Keywords (Block)" value={formData.filter_keywords} onChange={(v: string) => handleChange('filter_keywords', v)} placeholder="One per line" fontMono />
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-white/10">
+                                <h3 className="text-sm font-bold text-green-300 mb-2">Connected Targets (Graph)</h3>
+                                <div className="p-3 bg-black/30 rounded border border-white/10 text-xs text-white/70">
+                                    {fullConfig.connections &&
+                                        fullConfig.connections['forwarder-target'] &&
+                                        fullConfig.connections['forwarder-target'][node.id] &&
+                                        fullConfig.connections['forwarder-target'][node.id].length > 0 ? (
+                                        <ul className="list-disc pl-4 space-y-1">
+                                            {fullConfig.connections['forwarder-target'][node.id].map(targetId => (
+                                                <li key={targetId}>
+                                                    {targetId}
+                                                    {fullConfig.forward_targets?.find(t => t.id === targetId)?.platform ?
+                                                        ` (${fullConfig.forward_targets.find(t => t.id === targetId)?.platform})` : ''}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <div className="italic text-white/40">No connected targets. Connect to a Target node in the graph.</div>
+                                    )}
+                                </div>
                             </div>
                         </>
                     )}
