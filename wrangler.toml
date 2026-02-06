@@ -14,9 +14,7 @@ zone_name = "n2nj.moe"
 pattern = "cic.n2nj.moe/*"
 zone_name = "n2nj.moe"
 
-# Cron Triggers for schedule execution
-[triggers]
-crons = ["* * * * *"]  # Every minute
+
 
 [[d1_databases]]
 binding = "DB"
