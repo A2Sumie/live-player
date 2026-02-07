@@ -1,3 +1,6 @@
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP // ... existing lines ...
+);
+
 -- 播放器表
 CREATE TABLE IF NOT EXISTS players (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8,6 +11,8 @@ CREATE TABLE IF NOT EXISTS players (
     cover_url TEXT,
     cover_image BLOB,
     announcement TEXT,
+    created_by INTEGER, -- 关联 admins.id
+    stream_config TEXT, -- JSON 格式: { mode: "udp"|"echo", source: "...", headers: {...} }
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

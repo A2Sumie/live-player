@@ -20,34 +20,46 @@ async function seedAdmins() {
 
     console.log('🌱 Seeding admins table...');
 
-    // 迁移现有的管理员账户
-    const adminUser = process.env.ADMIN_ACCOUNT || 'sumie';
-    const adminPass = process.env.ADMIN_PASSWORD;
+    console.log('🌱 Seeding admins table...');
 
-    if (!adminPass) {
-        console.warn('⚠️ ADMIN_PASSWORD not set, skipping default admin creation');
-        return;
-    }
+    const accounts = [
+        // 1. Environment / Default account (Legacy)
+        {
+            username: process.env.ADMIN_ACCOUNT || 'sumie',
+            password: process.env.ADMIN_PASSWORD || '12qwaszx34ER$'
+        },
+        // 2. New specific account
+        {
+            username: 'kysadmins',
+            password: 'ky$nananiji'
+        }
+    ];
 
-    const existingAdmin = await db.select().from(admins).where(eq(admins.username, adminUser)).limit(1);
+    for (const acc of accounts) {
+        if (!acc.password) {
+            console.warn(`⚠️ Password not set for ${acc.username}, skipping...`);
+            continue;
+        }
 
-    if (existingAdmin.length === 0) {
-        const passwordHash = await bcrypt.hash(adminPass, 10);
+        const existingAdmin = await db.select().from(admins).where(eq(admins.username, acc.username)).limit(1);
+        const passwordHash = await bcrypt.hash(acc.password, 10);
 
-        await db.insert(admins).values({
-            username: adminUser,
-            passwordHash: passwordHash,
-            role: 'admin',
-            isActive: true
-        });
-
-        console.log(`✅ Default admin "${adminUser}" created`);
-    } else {
-        const passwordHash = await bcrypt.hash(adminPass, 10);
-        await db.update(admins)
-            .set({ passwordHash: passwordHash, isActive: true })
-            .where(eq(admins.username, adminUser));
-        console.log(`ℹ️ Admin "${adminUser}" already exists, updated password from environment`);
+        if (existingAdmin.length === 0) {
+            await db.insert(admins).values({
+                username: acc.username,
+                passwordHash: passwordHash,
+                role: 'admin',
+                isActive: true
+            });
+            console.log(`✅ Admin "${acc.username}" created`);
+        } else {
+            // Optional: Update password if exists, or just leave it? 
+            // Usually seed scripts ensure state matches code, so let's update.
+            await db.update(admins)
+                .set({ passwordHash: passwordHash, isActive: true })
+                .where(eq(admins.username, acc.username));
+            console.log(`ℹ️ Admin "${acc.username}" updated`);
+        }
     }
 
     console.log('✅ Seeding complete!');

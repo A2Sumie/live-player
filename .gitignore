@@ -51,3 +51,7 @@ setup-secrets.sh
 
 # ignored security files
 streamserv.zip
+
+# Extension Sensitive Data
+extension/wasm/
+extension/config.js
