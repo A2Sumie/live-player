@@ -7,7 +7,7 @@ import { cache, CACHE_KEYS } from '@/lib/cache';
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser();
-    
+
     if (!user || user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Permission denied' },
@@ -15,7 +15,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       );
     }
 
-    const { name, pId, description, url, coverUrl, announcement } = await request.json() as any;
+    const { name, pId, description, url, coverUrl, announcement, streamConfig } = await request.json() as any;
     const params = await context.params;
     const playerId = parseInt(params.id);
 
@@ -34,7 +34,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     }
 
     const db = getDb();
-    
+
     // Check if another player with the same pId exists (excluding current player)
     const existingPlayer = await db.select()
       .from(players)
@@ -56,6 +56,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         url,
         coverUrl: coverUrl || null,
         announcement: announcement || null,
+        streamConfig: streamConfig ? JSON.stringify(streamConfig) : null,
         updatedAt: new Date().toISOString()
       })
       .where(eq(players.id, playerId))
@@ -64,10 +65,9 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     cache.delete(CACHE_KEYS.PLAYER_LIST);
     cache.delete(CACHE_KEYS.PLAYER(pId));
     // Convert binary coverImage to array for JSON serialization
-    const playerWithArrayImage = {
-      ...player,
-      coverImage: player.coverImage ? Array.from(new Uint8Array(player.coverImage as ArrayBuffer)) : null
-    };
+    // [MODIFIED] Exclude coverImage to save bandwidth
+    const { coverImage: _ignored, ...playerWithoutImage } = player;
+    const playerWithArrayImage = playerWithoutImage;
 
     return NextResponse.json(playerWithArrayImage);
   } catch (error) {
@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser();
-    
+
     if (!user || user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Permission denied' },
@@ -101,9 +101,9 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
     }
 
     const db = getDb();
-    
+
     const [existingPlayer] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
-    
+
     await db.delete(players).where(eq(players.id, playerId));
 
     if (existingPlayer) {

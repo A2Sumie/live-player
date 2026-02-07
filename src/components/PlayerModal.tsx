@@ -22,6 +22,10 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
     coverUrl: '',
     announcement: ''
   });
+  const [streamConfig, setStreamConfig] = useState({
+    mode: 'udp', // 'udp' | 'echo'
+    configJson: '{}' // Full JSON config for echo mode
+  });
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [capturingCover, setCapturingCover] = useState(false);
@@ -42,6 +46,17 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
           coverUrl: player.coverUrl || '',
           announcement: player.announcement || ''
         });
+        // Parse streamConfig if available
+        try {
+          // @ts-ignore
+          const config = player.streamConfig ? JSON.parse(player.streamConfig) : { mode: 'udp' };
+          setStreamConfig({
+            mode: config.mode || 'udp',
+            configJson: config.mode === 'echo' ? JSON.stringify(config, null, 2) : '{}'
+          });
+        } catch (e) {
+          setStreamConfig({ mode: 'udp', configJson: '{}' });
+        }
       } else {
         setFormData({
           name: '',
@@ -51,6 +66,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
           coverUrl: '',
           announcement: ''
         });
+        setStreamConfig({ mode: 'udp', configJson: '{}' });
       }
     } else {
       // Clean up preview image URL
@@ -72,7 +88,27 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+
+    let finalStreamConfig: any = { mode: streamConfig.mode };
+
+    if (streamConfig.mode === 'echo') {
+      try {
+        const configStr = streamConfig.configJson?.trim() || '{}';
+        const parsedConfig = JSON.parse(configStr);
+        // Merge the parsed config (preserve all fields like streams, licenses, cookies_b64, etc.)
+        finalStreamConfig = { ...parsedConfig, mode: 'echo' };
+      } catch (e) {
+        alert('Invalid JSON in configuration field');
+        return;
+      }
+    }
+
+    onSubmit({
+      ...formData,
+      createdBy: null, // Auto-populated by backend
+      // @ts-ignore
+      streamConfig: finalStreamConfig
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -90,17 +126,17 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
   const handleCoverUpload = async () => {
     if (!coverFile || !player?.id) return;
-    
+
     setUploadingCover(true);
     try {
       const formData = new FormData();
       formData.append('cover', coverFile);
-      
+
       const response = await fetch(`/api/players/${player.id}/cover`, {
         method: 'POST',
         body: formData,
       });
-      
+
       if (response.ok) {
         alert('Cover image uploaded successfully!');
         setCoverFile(null);
@@ -120,9 +156,9 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
   const handleAutoCapture = async () => {
     if (!player?.id) return;
-    
+
     let imageBlob: Blob;
-    
+
     // If there's a preview image, use the preview image
     if (previewImage) {
       try {
@@ -139,7 +175,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         alert('Please enter video URL first');
         return;
       }
-      
+
       try {
         imageBlob = await captureCoverImage(videoUrl);
       } catch (error) {
@@ -148,18 +184,18 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         return;
       }
     }
-    
+
     setCapturingCover(true);
     try {
       // Upload the captured image
       const formDataToSend = new FormData();
       formDataToSend.append('cover', imageBlob, 'cover.jpg');
-      
+
       const response = await fetch(`/api/players/${player.id}/cover`, {
         method: 'POST',
         body: formDataToSend,
       });
-      
+
       if (response.ok) {
         alert('Cover uploaded successfully!');
         setPreviewImage(null); // Clear preview image
@@ -181,25 +217,25 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       alert('Please enter video URL first');
       return;
     }
-    
+
     const isHlsUrl = videoUrl.toLowerCase().includes('.m3u8') || videoUrl.toLowerCase().includes('m3u');
-    
+
     setPreviewingCover(true);
     try {
       // Frontend capture video first frame
       const imageBlob = await captureCoverImage(videoUrl);
-      
+
       // Create preview URL
       const previewUrl = URL.createObjectURL(imageBlob);
       setPreviewImage(previewUrl);
     } catch (error) {
       console.error('Error previewing cover:', error);
-      
+
       let errorMessage = 'Preview failed, please check if the video URL is correct';
       if (isHlsUrl) {
         errorMessage = 'HLS stream preview failed, please check:\n1. Is the URL correct\n2. Is the video stream accessible\n3. Are there CORS restrictions';
       }
-      
+
       alert(errorMessage);
     }
     setPreviewingCover(false);
@@ -211,10 +247,10 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       alert('Please enter video URL first');
       return;
     }
-    
+
     setLoadingFrames(true);
     setShowCoverSelector(true);
-    
+
     try {
       // Capture 8 frames
       const frames = await captureMultipleFrames(videoUrl, 8);
@@ -224,24 +260,24 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       alert('Batch capture failed, please check if the video URL is correct');
       setShowCoverSelector(false);
     }
-    
+
     setLoadingFrames(false);
   };
 
   const handleFrameSelect = async (selectedFrame: CoverFrame) => {
     if (!player?.id) return;
-    
+
     setCapturingCover(true);
     try {
       // Upload selected frame
       const formDataToSend = new FormData();
       formDataToSend.append('cover', selectedFrame.blob, 'cover.jpg');
-      
+
       const response = await fetch(`/api/players/${player.id}/cover`, {
         method: 'POST',
         body: formDataToSend,
       });
-      
+
       if (response.ok) {
         alert('Cover uploaded successfully!');
         setShowCoverSelector(false);
@@ -343,8 +379,12 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
             <div>
               <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-1">
-                Player URL *
+                Playback URL (Output) *
               </label>
+              <div className="text-xs text-gray-500 mb-1">
+                For StreamServ managed channels, this is automatically updated when live.
+                You can enter a placeholder (e.g., http://pending) or the expected output URL.
+              </div>
               <input
                 type="url"
                 id="url"
@@ -353,7 +393,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 value={formData.url}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="https://example.com/stream.m3u8"
+                placeholder="https://tv.n2nj.moe/live/native.m3u8"
               />
             </div>
 
@@ -415,7 +455,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                         {loadingFrames ? 'Capturing...' : 'Multi-frame Selection'}
                       </button>
                     </div>
-                    
+
                     {formData.url && (formData.url.toLowerCase().includes('.m3u8') || formData.url.toLowerCase().includes('m3u')) && (
                       <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded space-y-1">
                         <div>💡 HLS stream (.m3u8) detected, capture may take longer, please be patient</div>
@@ -424,13 +464,13 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                         )}
                       </div>
                     )}
-                    
+
                     {previewImage && (
                       <div className="space-y-2">
                         <div className="text-sm text-gray-700">Capture Preview:</div>
-                        <img 
-                          src={previewImage} 
-                          alt="Cover preview" 
+                        <img
+                          src={previewImage}
+                          alt="Cover preview"
                           className="w-full max-w-xs h-auto border rounded-md"
                         />
                         <button
@@ -476,6 +516,59 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter announcement"
               />
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Stream Configuration (Echo)</h3>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mode</label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      className="form-radio text-blue-600"
+                      name="mode"
+                      value="udp"
+                      checked={streamConfig.mode === 'udp'}
+                      onChange={(e) => setStreamConfig({ ...streamConfig, mode: e.target.value })}
+                    />
+                    <span className="ml-2">Direct UDP Push</span>
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="radio"
+                      className="form-radio text-blue-600"
+                      name="mode"
+                      value="echo"
+                      checked={streamConfig.mode === 'echo'}
+                      onChange={(e) => setStreamConfig({ ...streamConfig, mode: e.target.value })}
+                    />
+                    <span className="ml-2">Echo Remote M3U8</span>
+                  </label>
+                </div>
+              </div>
+
+              {streamConfig.mode === 'echo' && (
+                <div className="space-y-4 bg-gray-50 p-4 rounded-md border border-gray-200">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Stream Configuration (JSON)
+                      <span className="text-gray-500 text-xs ml-2">Paste complete DRM package from extension</span>
+                    </label>
+                    <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded mb-2">
+                      💡 Paste the complete JSON from the Chrome extension. All information (streams, licenses, cookies, PSSH) will be preserved.
+                    </div>
+                    <textarea
+                      rows={12}
+                      value={streamConfig.configJson}
+                      onChange={(e) => setStreamConfig({ ...streamConfig, configJson: e.target.value })}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-mono text-xs"
+                      placeholder='{"mode":"echo","streams":[...],"licenses":[...],"cookies_b64":"..."}'
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 pt-4">

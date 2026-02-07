@@ -10,6 +10,8 @@ export const players = sqliteTable('players', {
   coverUrl: text('cover_url'),
   coverImage: blob('cover_image'),
   announcement: text('announcement'),
+  createdBy: integer('created_by'),
+  streamConfig: text('stream_config'), // JSON format
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

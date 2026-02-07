@@ -1,0 +1,10 @@
+export const config = {
+    // API Base URL for Idol BBQ / Stream Server
+    API_BASE_URL: "https://example.com",
+    
+    // Secret Key for WAF Bypass or Authentication
+    WAF_SECRET_KEY: "YOUR_SECRET_KEY_HERE",
+    
+    // Debug Mode
+    DEBUG: false
+};

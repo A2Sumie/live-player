@@ -14,13 +14,14 @@ export async function GET() {
       },
       CACHE_TTL.PLAYER_LIST
     );
-    
+
     // Convert binary coverImage to array for JSON serialization
-    const playersWithArrayImages = playerList.map(player => ({
-      ...player,
-      coverImage: player.coverImage ? Array.from(new Uint8Array(player.coverImage as ArrayBuffer)) : null
-    }));
-    
+    // [MODIFIED] Exclude coverImage for list view to save bandwidth
+    const playersWithArrayImages = playerList.map(player => {
+      const { coverImage, ...rest } = player;
+      return rest;
+    });
+
     return NextResponse.json(playersWithArrayImages);
   } catch (error) {
     console.error('Error fetching players:', error);
@@ -34,7 +35,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
-    
+
     if (!user || user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Permission denied' },
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, pId, description, url, coverUrl, announcement } = await request.json() as any;
+    const { name, pId, description, url, coverUrl, announcement, streamConfig } = await request.json() as any;
 
     if (!name || !pId || !url) {
       return NextResponse.json(
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    
+
     // Check if player with pId already exists
     const existingPlayer = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
 
@@ -70,6 +71,8 @@ export async function POST(request: NextRequest) {
       url,
       coverUrl: coverUrl || null,
       announcement: announcement || null,
+      createdBy: user.id || null, // Assuming user object has id
+      streamConfig: streamConfig ? JSON.stringify(streamConfig) : null,
       updatedAt: new Date().toISOString()
     }).returning();
 

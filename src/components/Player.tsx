@@ -137,6 +137,13 @@ function _Artplayer({
       ]
     });
 
+    // Enforce "No Pause" policy for Live Player
+    art.on('pause', () => {
+      if (!art.option.isLive) return;
+      art.notice.show = '直播模式无法暂停';
+      art.play();
+    });
+
     if (getInstance && typeof getInstance === "function") {
       getInstance(art);
     }
@@ -180,7 +187,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     volume: 0.7,
     isLive: true,
     muted: false,
-    autoplay: false,
+    autoplay: true,
     pip: false,
     autoSize: true,
     autoMini: true,
@@ -201,6 +208,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     airplay: true,
     theme: '#00d4ff',
     lang: 'zh-cn',
+    // Enable Info panel for bitrate/stats inspection
+    info: true,
+    hotkey: false, // Disable keyboard seeking
     moreVideoAttr: {
       crossOrigin: 'anonymous',
       // @ts-ignore
@@ -216,9 +226,19 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   // We can't easily pass it there via option unless we modify the callback
   // But we use a ref or closure.
 
-  // Actually, standard ArtPlayer allows extending.
-  // We'll handle the HLS debug in the effect below if reasonable,
-  // OR we modify the _Artplayer nested component to accept debug prop.
+  // React to URL changes (e.g. Offline -> Live)
+  useEffect(() => {
+    if (artPlayerRef.current && player.url && player.url !== artPlayerRef.current.option.url) {
+      console.log("🔄 Switching URL to:", player.url);
+      artPlayerRef.current.switchUrl(player.url);
+      artPlayerRef.current.option.url = player.url;
+
+      // Auto-play if not offline
+      if (player.url !== 'http://offline' && player.url !== 'https://offline') {
+        artPlayerRef.current.play();
+      }
+    }
+  }, [player.url]);
 
 
   return (

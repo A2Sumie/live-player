@@ -1,0 +1,63 @@
+{
+    "manifest_version": 3,
+    "name": "N2NJ Header Capturer",
+    "version": "1.0",
+    "description": "Capture headers and cookies for Live Player Echo Config",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "cookies",
+        "webRequest",
+        "storage",
+        "webNavigation"
+    ],
+    "host_permissions": [
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icon.png",
+            "48": "icon.png",
+            "128": "icon.png"
+        }
+    },
+    "icons": {
+        "16": "icon.png",
+        "48": "icon.png",
+        "128": "icon.png"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "lib/*.js",
+                "protobuf-generated/*.js",
+                "wasm/*.js",
+                "wasm/*.wasm",
+                "content_key_decryption.js",
+                "eme_interception.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    }
+}
