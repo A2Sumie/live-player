@@ -95,6 +95,8 @@ export interface Formatter {
     name?: string;
     group?: string;
     render_type: 'text' | 'tag' | 'img' | 'img-tag' | 'img-tag-dynamic' | 'img-with-meta';
+    aggregation?: boolean;
+    deduplication?: boolean;
     // Add config for visualization if needed, e.g. watermark, etc.
 }
 

@@ -73,6 +73,8 @@ export default function ConfigEditor({ node, onSave, onClose, fullConfig, availa
                 id: node.data.id || '',
                 name: node.data.name || '',
                 render_type: node.data.render_type || 'text',
+                aggregation: node.data.aggregation || false,
+                deduplication: node.data.deduplication || false,
                 group: node.data.group || '',
             });
         } else if (node.type === 'target') {
@@ -235,6 +237,8 @@ export default function ConfigEditor({ node, onSave, onClose, fullConfig, availa
             updatedData.id = formData.id || node.data.id;
             updatedData.name = formData.name;
             updatedData.render_type = formData.render_type;
+            updatedData.aggregation = formData.aggregation;
+            updatedData.deduplication = formData.deduplication;
             updatedData.group = formData.group;
 
         } else if (node.type === 'target') {
@@ -479,6 +483,20 @@ export default function ConfigEditor({ node, onSave, onClose, fullConfig, availa
                                 ]}
                                 onChange={(v: string) => handleChange('render_type', v)}
                             />
+
+                            <div className="flex flex-col gap-2 pt-4 border-t border-white/10 mt-4">
+                                <h3 className="text-sm font-bold text-pink-300">Advanced Options</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-white/80">
+                                        <input type="checkbox" checked={formData.aggregation || false} onChange={(e) => handleChange('aggregation', e.target.checked)} className="rounded border-white/20 bg-black/30" />
+                                        Aggregation (Batch Mode)
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-white/80">
+                                        <input type="checkbox" checked={formData.deduplication || false} onChange={(e) => handleChange('deduplication', e.target.checked)} className="rounded border-white/20 bg-black/30" />
+                                        Media Deduplication
+                                    </label>
+                                </div>
+                            </div>
                         </>
                     )}
 
