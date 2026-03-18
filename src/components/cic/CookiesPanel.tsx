@@ -45,7 +45,7 @@ export default function CookiesPanel() {
       ]);
 
       if (!cookiesRes.ok) {
-        throw new Error('Failed to fetch cookies');
+        throw new Error('获取 Cookies 失败');
       }
 
       const cookiesData = (await cookiesRes.json()) as CookieFile[];
@@ -69,7 +69,7 @@ export default function CookiesPanel() {
       setCookies(cookiesData);
       setCrawlers(crawlersData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load cookies');
+      setError(err instanceof Error ? err.message : '加载 Cookies 失败');
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,7 @@ export default function CookiesPanel() {
     try {
       const res = await fetch(`/api/cookies/view/${encodeURIComponent(name)}`);
       if (!res.ok) {
-        throw new Error('Failed to load cookie');
+        throw new Error('读取 Cookie 失败');
       }
 
       const data = (await res.json()) as CookieDetail;
@@ -111,7 +111,7 @@ export default function CookiesPanel() {
       setEditorStatus(null);
       setViewMode('edit');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load cookie');
+      setError(err instanceof Error ? err.message : '读取 Cookie 失败');
     } finally {
       setLoading(false);
     }
@@ -134,16 +134,16 @@ export default function CookiesPanel() {
 
       const text = await res.text();
       if (!res.ok) {
-        throw new Error(text || 'Failed to save cookie');
+        throw new Error(text || '保存 Cookie 失败');
       }
 
-      setEditorStatus('Saved');
+      setEditorStatus('已保存');
       await fetchData();
       if (viewMode === 'create') {
         setViewMode('list');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save';
+      const message = err instanceof Error ? err.message : '保存失败';
       setEditorStatus(message);
     } finally {
       setEditorLoading(false);
@@ -182,7 +182,7 @@ export default function CookiesPanel() {
       return;
     }
 
-    if (!confirm(`Delete ${selectedCookies.size} cookie files?`)) {
+    if (!confirm(`确认删除这 ${selectedCookies.size} 个 Cookie 文件吗？`)) {
       return;
     }
 
@@ -201,14 +201,14 @@ export default function CookiesPanel() {
       await fetchData();
       setSelectedCookies(new Set());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete cookies');
+      setError(err instanceof Error ? err.message : '删除 Cookies 失败');
     } finally {
       setDeleting(false);
     }
   };
 
   const handleRestart = async () => {
-    if (!confirm('Restart the internal service now?')) {
+    if (!confirm('确认现在重启内部服务吗？')) {
       return;
     }
 
@@ -218,9 +218,9 @@ export default function CookiesPanel() {
       if (!res.ok) {
         throw new Error(await res.text());
       }
-      alert('Restart request sent.');
+      alert('已发送重启请求。');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Restart failed');
+      alert(err instanceof Error ? err.message : '重启失败');
     } finally {
       setRestarting(false);
     }
@@ -232,14 +232,13 @@ export default function CookiesPanel() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-              Cookie Manager
+              Cookie 管理
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              Managed crawler cookie files
+              已托管的抓取 Cookie 文件
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              Create, update, and clean up Netscape-format cookie files consumed
-              by crawler definitions exposed through the existing proxy endpoints.
+              创建、更新和清理供抓取器使用的 Netscape 格式 Cookie 文件，走现有代理接口完成读写。
             </p>
           </div>
 
@@ -250,7 +249,7 @@ export default function CookiesPanel() {
               disabled={restarting}
               className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {restarting ? 'Restarting...' : 'Restart service'}
+              {restarting ? '重启中...' : '重启服务'}
             </button>
             {viewMode === 'list' ? (
               <button
@@ -258,7 +257,7 @@ export default function CookiesPanel() {
                 onClick={handleCreate}
                 className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
               >
-                New cookie
+                新建 Cookie
               </button>
             ) : (
               <button
@@ -266,7 +265,7 @@ export default function CookiesPanel() {
                 onClick={() => setViewMode('list')}
                 className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
               >
-                Back to list
+                返回列表
               </button>
             )}
           </div>
@@ -287,31 +286,31 @@ export default function CookiesPanel() {
               onClick={() => handleSelectAll(true)}
               className="transition hover:text-white"
             >
-              Select all
+              全选
             </button>
             <button
               type="button"
               onClick={() => handleSelectAll(false)}
               className="transition hover:text-white"
             >
-              Deselect
+              取消选择
             </button>
             <button
               type="button"
               onClick={handleSelectUnused}
               className="text-cyan-300 transition hover:text-cyan-200"
             >
-              Select unused
+              选中未使用项
             </button>
             <button
               type="button"
               onClick={fetchData}
               className="transition hover:text-white"
             >
-              Refresh
+              刷新
             </button>
             <span className="ml-auto">
-              {selectedCookies.size} selected
+              已选择 {selectedCookies.size} 项
             </span>
             {selectedCookies.size > 0 && (
               <button
@@ -320,18 +319,18 @@ export default function CookiesPanel() {
                 disabled={deleting}
                 className="rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {deleting ? 'Deleting...' : 'Delete selected'}
+                {deleting ? '删除中...' : '删除所选'}
               </button>
             )}
           </section>
 
           {loading ? (
             <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-10 text-center text-slate-400">
-              Loading cookies...
+              正在加载 Cookies...
             </div>
           ) : cookies.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-white/10 bg-white/5 px-6 py-10 text-center text-slate-500">
-              No cookies found.
+              暂无 Cookie 文件。
             </div>
           ) : (
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -369,7 +368,7 @@ export default function CookiesPanel() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       {usedBy.length === 0 ? (
                         <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
-                          Unused
+                          未使用
                         </span>
                       ) : (
                         usedBy.map((crawler) => (
@@ -394,7 +393,7 @@ export default function CookiesPanel() {
                         }}
                         className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200 transition hover:bg-white/10"
                       >
-                        Edit
+                        编辑
                       </button>
                     </div>
                   </article>
@@ -406,12 +405,12 @@ export default function CookiesPanel() {
       ) : (
         <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-6">
           <h3 className="text-xl font-semibold text-white">
-            {viewMode === 'create' ? 'Create cookie' : `Edit ${editorFinder}`}
+            {viewMode === 'create' ? '新建 Cookie' : `编辑 ${editorFinder}`}
           </h3>
           <form onSubmit={handleSave} className="mt-6 space-y-4">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-200">
-                Finder name
+                查找名
               </span>
               <input
                 type="text"
@@ -425,7 +424,7 @@ export default function CookiesPanel() {
 
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-200">
-                Cookie content
+                Cookie 内容
               </span>
               <textarea
                 rows={14}
@@ -442,7 +441,7 @@ export default function CookiesPanel() {
                 disabled={editorLoading}
                 className="rounded-full bg-emerald-400 px-5 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {editorLoading ? 'Saving...' : 'Save'}
+                {editorLoading ? '保存中...' : '保存'}
               </button>
               {editorStatus && (
                 <span className="text-sm text-slate-300">{editorStatus}</span>

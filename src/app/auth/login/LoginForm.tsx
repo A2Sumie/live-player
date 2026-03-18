@@ -30,10 +30,10 @@ export default function LoginForm({
         router.push(redirectPath);
         router.refresh();
       } else {
-        setError('Invalid username or password');
+        setError('用户名或密码错误');
       }
     } catch {
-      setError('Login failed, please try again');
+      setError('登录失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -48,7 +48,7 @@ export default function LoginForm({
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             <Link href="/" className="font-medium text-blue-600 hover:text-blue-500">
-              Home
+              返回首页
             </Link>
           </p>
         </div>
@@ -56,7 +56,7 @@ export default function LoginForm({
           <div className="-space-y-px rounded-md shadow-sm">
             <div>
               <label htmlFor="username" className="sr-only">
-                Username
+                用户名
               </label>
               <input
                 id="username"
@@ -64,7 +64,7 @@ export default function LoginForm({
                 type="text"
                 required
                 className="relative block w-full appearance-none rounded-none rounded-t-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                placeholder="Username"
+                placeholder="用户名"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={loading}
@@ -72,7 +72,7 @@ export default function LoginForm({
             </div>
             <div>
               <label htmlFor="password" className="sr-only">
-                Password
+                密码
               </label>
               <input
                 id="password"
@@ -80,7 +80,7 @@ export default function LoginForm({
                 type="password"
                 required
                 className="relative block w-full appearance-none rounded-none rounded-b-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                placeholder="Password"
+                placeholder="密码"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
@@ -100,7 +100,7 @@ export default function LoginForm({
               disabled={loading}
               className="group relative flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? 'Logging in...' : 'Log in'}
+              {loading ? '登录中...' : '登录'}
             </button>
           </div>
         </form>

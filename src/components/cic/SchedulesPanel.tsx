@@ -25,7 +25,7 @@ export default function SchedulesPanel() {
         setSchedules(data);
       }
     } catch (error) {
-      console.error('Failed to load schedules:', error);
+      console.error('加载日程失败:', error);
     } finally {
       setLoading(false);
     }
@@ -74,16 +74,16 @@ export default function SchedulesPanel() {
         event.currentTarget.reset();
         loadSchedules();
       } else {
-        alert('Failed to create schedule');
+        alert('创建日程失败');
       }
     } catch (error) {
-      console.error('Failed to create schedule:', error);
-      alert('Failed to create schedule');
+      console.error('创建日程失败:', error);
+      alert('创建日程失败');
     }
   };
 
   const deleteSchedule = async (id: number) => {
-    if (!confirm('Delete this schedule?')) {
+    if (!confirm('确认删除这个日程吗？')) {
       return;
     }
 
@@ -93,7 +93,7 @@ export default function SchedulesPanel() {
         loadSchedules();
       }
     } catch (error) {
-      console.error('Failed to delete schedule:', error);
+      console.error('删除日程失败:', error);
     }
   };
 
@@ -103,14 +103,13 @@ export default function SchedulesPanel() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-              Schedules
+              日程
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              Upcoming automated jobs
+              即将执行的自动化任务
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              Existing D1-backed schedules remain unchanged. This page only
-              consolidates them under the CIC shell.
+              现有基于 D1 的日程逻辑没有变化，这一页只是把它们统一纳入 CIC 外壳。
             </p>
           </div>
 
@@ -120,14 +119,14 @@ export default function SchedulesPanel() {
               onClick={() => setShowCreateForm((prev) => !prev)}
               className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
             >
-              {showCreateForm ? 'Close form' : 'New schedule'}
+              {showCreateForm ? '收起表单' : '新建日程'}
             </button>
             <button
               type="button"
               onClick={loadSchedules}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
             >
-              Refresh
+              刷新
             </button>
           </div>
         </div>
@@ -135,29 +134,29 @@ export default function SchedulesPanel() {
 
       {showCreateForm && (
         <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-6">
-          <h3 className="text-xl font-semibold text-white">Create schedule</h3>
+          <h3 className="text-xl font-semibold text-white">新建日程</h3>
           <form onSubmit={createSchedule} className="mt-6 grid gap-4 md:grid-cols-2">
-            <TextField label="Title" name="title" required />
+            <TextField label="标题" name="title" required />
             <SelectField
-              label="Type"
+              label="类型"
               name="scheduleType"
               options={[
-                { label: 'Stream', value: 'stream' },
-                { label: 'Workflow', value: 'workflow' },
-                { label: 'Reminder', value: 'reminder' },
+                { label: '转播', value: 'stream' },
+                { label: '工作流', value: 'workflow' },
+                { label: '提醒', value: 'reminder' },
               ]}
             />
             <TextField
-              label="Execution time"
+              label="执行时间"
               name="executionTime"
               type="datetime-local"
               required
             />
-            <TextField label="Player ID" name="playerId" />
-            <TextField label="Stream URL" name="source" type="url" />
+            <TextField label="播放器 ID" name="playerId" />
+            <TextField label="流地址" name="source" type="url" />
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-slate-200">
-                Description
+                描述
               </label>
               <textarea
                 name="description"
@@ -170,7 +169,7 @@ export default function SchedulesPanel() {
                 type="submit"
                 className="rounded-full bg-emerald-400 px-5 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-300"
               >
-                Save schedule
+                保存日程
               </button>
             </div>
           </form>
@@ -180,11 +179,11 @@ export default function SchedulesPanel() {
       <section className="space-y-4">
         {loading ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-10 text-center text-slate-400">
-            Loading schedules...
+            正在加载日程...
           </div>
         ) : schedules.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-10 text-center text-slate-500">
-            No upcoming schedules.
+            暂无即将执行的日程。
           </div>
         ) : (
           schedules.map((schedule) => (
@@ -212,7 +211,7 @@ export default function SchedulesPanel() {
                   )}
                   <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-400">
                     <span>{new Date(schedule.executionTime).toLocaleString()}</span>
-                    <span>created by {schedule.createdBy || 'system'}</span>
+                    <span>创建者：{schedule.createdBy || '系统'}</span>
                   </div>
                 </div>
 
@@ -221,7 +220,7 @@ export default function SchedulesPanel() {
                   onClick={() => deleteSchedule(schedule.id)}
                   className="rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20"
                 >
-                  Delete
+                  删除
                 </button>
               </div>
             </article>

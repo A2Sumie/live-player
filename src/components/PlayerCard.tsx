@@ -41,7 +41,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     e.preventDefault();
     e.stopPropagation();
 
-    if (!confirm('Are you sure you want to delete this player?')) {
+    if (!confirm('确认删除这个频道吗？')) {
       return;
     }
 
@@ -64,7 +64,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                   <button
                     onClick={handleEdit}
                     className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-lg"
-                    title="Edit"
+                    title="编辑"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -73,7 +73,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                   <button
                     onClick={handleDelete}
                     className="p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors shadow-lg"
-                    title="Delete"
+                    title="删除"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -107,13 +107,13 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                     onClick={handleEdit}
                     className="flex-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
                   >
-                    Edit
+                    编辑
                   </button>
                   <button
                     onClick={handleDelete}
                     className="flex-1 px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
                   >
-                    Delete
+                    删除
                   </button>
                 </div>
                 <div className="flex gap-2">
@@ -121,7 +121,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                     onClick={async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      if (!confirm('Stop this relay stream?')) return;
+                      if (!confirm('确认停止这个转播流吗？')) return;
                       await fetch(`/api/players/${player.id}/relay`, {
                         method: 'POST',
                         body: JSON.stringify({ action: 'stop' }),
@@ -129,9 +129,9 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                       window.location.reload(); // Simple reload to reflect state
                     }}
                     className="flex-1 px-3 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded hover:bg-orange-100 transition-colors"
-                    title="Stop & Archive Stream"
+                    title="停止并归档转播"
                   >
-                    ⏹ Stop Relay
+                    ⏹ 停止转播
                   </button>
                 </div>
               </div>

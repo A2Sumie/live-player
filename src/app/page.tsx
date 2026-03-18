@@ -48,11 +48,11 @@ export default function Home() {
         setEditingPlayer(fullPlayer);
         setModalOpen(true);
       } else {
-        alert('Failed to fetch full player details');
+        alert('获取频道完整信息失败');
       }
     } catch (error) {
       console.error('Error fetching full player:', error);
-      alert('Failed to fetch full player details');
+      alert('获取频道完整信息失败');
     }
   };
 
@@ -67,11 +67,11 @@ export default function Home() {
         setPlayers(prev => prev.filter(p => p.id !== player.id));
       } else {
         const error = await response.json();
-        alert((error as { error: string }).error || 'Delete failed');
+        alert((error as { error: string }).error || '删除失败');
       }
     } catch (error) {
       console.error('Error deleting player:', error);
-      alert('Delete failed');
+      alert('删除失败');
     }
   };
 
@@ -105,11 +105,11 @@ export default function Home() {
         setEditingPlayer(null);
       } else {
         const error = await response.json();
-        alert((error as { error: string }).error || (isEditing ? 'Update failed' : 'Create failed'));
+        alert((error as { error: string }).error || (isEditing ? '更新失败' : '创建失败'));
       }
     } catch (error) {
       console.error('Error submitting player:', error);
-      alert(editingPlayer ? 'Update failed' : 'Create failed');
+      alert(editingPlayer ? '更新失败' : '创建失败');
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +120,7 @@ export default function Home() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-foreground">Loading...</p>
+          <p className="text-foreground">加载中...</p>
         </div>
       </div>
     );
@@ -157,7 +157,7 @@ export default function Home() {
 
         {players.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-foreground/60 text-lg mb-4">No players found</p>
+            <p className="text-foreground/60 text-lg mb-4">当前没有可用频道</p>
             {user?.role === 'admin' && (
               <AddPlayerButton onClick={handleAddPlayer} />
             )}

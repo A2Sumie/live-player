@@ -4,23 +4,23 @@ import { requireCICAccess } from '@/lib/cic-auth';
 const DASHBOARD_CARDS = [
   {
     href: '/cic/config',
-    title: 'Config',
-    body: 'Edit crawlers, formatters, targets, and template routing with semantic review.',
+    title: '配置',
+    body: '管理抓取器、格式化器、目标和模板路由，并在保存前查看语义审阅。',
   },
   {
     href: '/cic/cookies',
-    title: 'Cookies',
-    body: 'Manage crawler cookie files and restart the internal service when needed.',
+    title: 'Cookie',
+    body: '管理抓取器使用的 Cookie 文件，并在需要时重启内部服务。',
   },
   {
     href: '/cic/logs',
-    title: 'Logs',
-    body: 'Inspect the latest D1-backed system logs without leaving the control center.',
+    title: '日志',
+    body: '在控制台内直接查看最新的 D1 系统日志。',
   },
   {
     href: '/cic/schedules',
-    title: 'Schedules',
-    body: 'Create and monitor scheduled jobs for reminders, streams, and workflows.',
+    title: '日程',
+    body: '创建并查看提醒、转播和工作流任务的调度状态。',
   },
 ];
 
@@ -32,16 +32,14 @@ export default async function CICDashboardPage() {
       <section className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-slate-950/30">
         <div className="max-w-3xl">
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-300/80">
-            Unified Operations
+            统一运维入口
           </div>
           <h2 className="mt-2 text-3xl font-semibold text-white">
-            One entry point for CIC operations
+            CIC 操作统一收口
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            The control center now groups config, cookies, logs, and schedules
-            behind a single authenticated surface. Legacy routes remain wired
-            through compatibility redirects, but operational work should happen
-            here.
+            现在配置、Cookie、日志和日程已经统一收进同一套鉴权控制台。
+            旧入口仍然通过兼容跳转保留，但后续运维操作应以这里为主。
           </p>
         </div>
       </section>

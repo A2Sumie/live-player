@@ -77,7 +77,7 @@ function _Artplayer({
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
       } else {
-        art.notice.show = "Unsupported playback format: m3u8";
+        art.notice.show = '当前环境不支持 m3u8 播放';
       }
     },
     []
@@ -188,7 +188,7 @@ function _Artplayer({
           index: 20,
           position: 'right',
           html: '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z" fill="currentColor"/></svg>',
-          tooltip: 'Picture in Picture',
+          tooltip: '画中画',
           click: function (this: Artplayer) {
             if (document.pictureInPictureEnabled) {
               if (document.pictureInPictureElement) {
@@ -201,7 +201,7 @@ function _Artplayer({
               const mode = (this.video as any).webkitPresentationMode;
               (this.video as any).webkitSetPresentationMode(mode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
             } else {
-              this.notice.show = 'Picture-in-Picture not supported';
+              this.notice.show = '当前环境不支持画中画';
             }
           },
         }
@@ -229,15 +229,15 @@ function _Artplayer({
               if (bitrate) label += ` (${bitrate})`;
               return label;
             },
-            title: 'Quality',
-            auto: 'Auto',
+            title: '画质',
+            auto: '自动',
           },
           audio: {
             control: true,
             setting: true,
             getName: (track: any) => track.name,
-            title: 'Audio',
-            auto: 'Auto',
+            title: '音轨',
+            auto: '自动',
           }
         }),
       ]
@@ -374,7 +374,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               href="/"
               className="text-blue-600 hover:text-blue-800 transition-colors"
             >
-              ← Home
+              ← 返回首页
             </Link>
             <h1 className="text-xl font-bold">
               <ObfuscatedText text={player.name} playerId={player.pId} />
