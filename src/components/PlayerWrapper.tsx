@@ -12,7 +12,7 @@ interface PlayerProps {
 
 const PlayerComponent = dynamic(() => import('@/components/Player'), {
     ssr: false,
-    loading: () => <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading Player...</div>
+    loading: () => <div className="min-h-screen bg-black text-white flex items-center justify-center">正在加载播放器...</div>
 });
 
 export default function PlayerWrapper(props: PlayerProps) {

@@ -40,10 +40,10 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
   if (loading) {
     return (
       <div className="bg-white rounded-lg p-6 max-w-4xl mx-auto">
-        <h3 className="text-lg font-semibold mb-4">Capturing frames from first segment...</h3>
+        <h3 className="text-lg font-semibold mb-4">正在提取首个分片的关键帧...</h3>
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Analyzing segment content, please wait...</span>
+          <span className="ml-3 text-gray-600">正在分析首个分片内容，请稍候...</span>
         </div>
       </div>
     );
@@ -52,13 +52,13 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
   if (frames.length === 0) {
     return (
       <div className="bg-white rounded-lg p-6 max-w-4xl mx-auto">
-        <h3 className="text-lg font-semibold mb-4">Capture Failed</h3>
-        <p className="text-gray-600 mb-4">Unable to capture cover frames from video, please check if the video URL is correct.</p>
+        <h3 className="text-lg font-semibold mb-4">抓帧失败</h3>
+        <p className="text-gray-600 mb-4">无法从视频中提取封面帧，请检查视频地址是否正确。</p>
         <button
           onClick={onCancel}
           className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
         >
-          Close
+          关闭
         </button>
       </div>
     );
@@ -67,9 +67,9 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
   return (
     <div className="bg-white rounded-lg p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Select Cover Image</h3>
+        <h3 className="text-lg font-semibold">选择封面图</h3>
         <span className="text-sm text-gray-500">
-          Captured {frames.length} frames from first segment, please select one as cover
+          已从首个分片提取 {frames.length} 帧，请选择一张作为封面
         </span>
       </div>
 
@@ -86,12 +86,12 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
           >
             <img
               src={frame.previewUrl}
-              alt={`Frame ${index + 1}`}
+              alt={`第 ${index + 1} 帧`}
               className="w-full h-auto aspect-video object-cover"
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
               <div className="text-white text-xs">
-                <div>Frame {index + 1}</div>
+                <div>第 {index + 1} 帧</div>
                 <div>{formatTime(frame.timepoint)}</div>
               </div>
             </div>
@@ -110,11 +110,11 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
         <div className="text-sm text-gray-600">
           {selectedFrame ? (
             <span>
-              Selected: Frame {frames.indexOf(selectedFrame) + 1} 
+              已选择：第 {frames.indexOf(selectedFrame) + 1} 帧
               ({formatTime(selectedFrame.timepoint)})
             </span>
           ) : (
-            <span>Please select a cover frame</span>
+            <span>请选择一张封面帧</span>
           )}
         </div>
         
@@ -123,14 +123,14 @@ export default function CoverSelector({ frames, onSelect, onCancel, loading }: C
             onClick={onCancel}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
           >
-            Cancel
+            取消
           </button>
           <button
             onClick={handleConfirm}
             disabled={!selectedFrame}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Confirm Selection
+            确认选择
           </button>
         </div>
       </div>

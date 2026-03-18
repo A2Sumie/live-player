@@ -32,15 +32,40 @@ import {
 } from '@/lib/cic-config';
 
 const RENDER_TYPE_OPTIONS = [
-  'text',
-  'tag',
-  'img',
-  'img-tag',
-  'img-tag-dynamic',
-  'img-with-meta',
+  { value: 'text', label: '纯文本（text）' },
+  { value: 'tag', label: '标签（tag）' },
+  { value: 'img', label: '图片（img）' },
+  { value: 'img-tag', label: '图片标签（img-tag）' },
+  { value: 'img-tag-dynamic', label: '动态图片标签（img-tag-dynamic）' },
+  { value: 'img-with-meta', label: '图片附带元信息（img-with-meta）' },
 ];
 
-const TARGET_PLATFORM_OPTIONS = ['telegram', 'qq', 'bilibili', 'none'];
+const TARGET_PLATFORM_OPTIONS = [
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'qq', label: 'QQ' },
+  { value: 'bilibili', label: 'Bilibili' },
+  { value: 'none', label: '无（none）' },
+];
+
+const TASK_TYPE_OPTIONS = [
+  { value: 'article', label: '文章（article）' },
+  { value: 'follows', label: '关注流（follows）' },
+];
+
+const ENGINE_OPTIONS = [
+  { value: 'browser', label: '浏览器（browser）' },
+  { value: 'cheerio', label: 'Cheerio' },
+  { value: 'axios', label: 'Axios' },
+  { value: 'api-graphql', label: 'GraphQL API（api-graphql）' },
+];
+
+const MEDIA_CHECK_OPTIONS = [
+  { value: 'strict', label: '严格（strict）' },
+  { value: 'loose', label: '宽松（loose）' },
+  { value: 'none', label: '关闭（none）' },
+];
+
+type SelectOption = string | { value: string; label: string };
 
 type EntityKind = 'crawler' | 'formatter' | 'target' | 'forwarder';
 
@@ -54,6 +79,66 @@ type RouteEditorState =
   | { kind: 'crawler'; index: number }
   | { kind: 'formatter'; index: number }
   | { kind: 'forwarder'; index: number };
+
+function formatTaskType(value?: string) {
+  if (value === 'article') {
+    return '文章';
+  }
+  if (value === 'follows') {
+    return '关注流';
+  }
+  return value || '-';
+}
+
+function formatEngine(value?: string) {
+  if (!value) {
+    return '默认';
+  }
+  if (value === 'browser') {
+    return '浏览器';
+  }
+  if (value === 'api-graphql') {
+    return 'GraphQL API';
+  }
+  return value;
+}
+
+function formatRenderType(value?: string) {
+  if (!value) {
+    return '默认';
+  }
+  const map: Record<string, string> = {
+    text: '纯文本',
+    tag: '标签',
+    img: '图片',
+    'img-tag': '图片标签',
+    'img-tag-dynamic': '动态图片标签',
+    'img-with-meta': '图片附带元信息',
+  };
+  return map[value] || value;
+}
+
+function formatPlatform(value?: string) {
+  if (value === 'none') {
+    return '无';
+  }
+  return value || '-';
+}
+
+function formatReviewKind(
+  kind: 'added' | 'removed' | 'updated' | 'warn'
+) {
+  if (kind === 'added') {
+    return '新增';
+  }
+  if (kind === 'removed') {
+    return '删除';
+  }
+  if (kind === 'updated') {
+    return '修改';
+  }
+  return '告警';
+}
 
 export default function ConfigConsole() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -96,7 +181,7 @@ export default function ConfigConsole() {
       setDirty(false);
       setStatus(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load config');
+      setError(err instanceof Error ? err.message : '加载配置失败');
     } finally {
       setLoading(false);
     }
@@ -113,7 +198,7 @@ export default function ConfigConsole() {
 
     return (config.crawlers || []).map((crawler, index) => ({
       key: getCrawlerConnectionKey(crawler, index),
-      label: crawler.name || `Crawler ${index + 1}`,
+      label: crawler.name || `抓取器 ${index + 1}`,
       index,
     }));
   }, [config]);
@@ -437,7 +522,7 @@ export default function ConfigConsole() {
     }
 
     setSaving(true);
-    setStatus('Saving...');
+    setStatus('正在保存...');
 
     try {
       const res = await fetch('/api/config/update', {
@@ -453,17 +538,17 @@ export default function ConfigConsole() {
       setOriginalConfig(cloneAppConfig(config));
       setDirty(false);
       setReviewOpen(false);
-      setStatus('Saved. Restart the internal service to apply the new config.');
+      setStatus('已保存。请重启内部服务以应用新配置。');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save';
-      setStatus(`Save failed: ${message}`);
+      const message = err instanceof Error ? err.message : '保存失败';
+      setStatus(`保存失败：${message}`);
     } finally {
       setSaving(false);
     }
   };
 
   const handleRestart = async () => {
-    if (!confirm('Restart the internal service now?')) {
+    if (!confirm('现在重启内部服务吗？')) {
       return;
     }
 
@@ -473,10 +558,10 @@ export default function ConfigConsole() {
       if (!res.ok) {
         throw new Error(await res.text());
       }
-      setStatus('Restart request sent.');
+      setStatus('已发送重启请求。');
     } catch (err) {
       setStatus(
-        `Restart failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+        `重启失败：${err instanceof Error ? err.message : '未知错误'}`
       );
     } finally {
       setRestarting(false);
@@ -486,7 +571,7 @@ export default function ConfigConsole() {
   if (loading) {
     return (
       <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-12 text-center text-slate-400">
-        Loading configuration...
+        正在加载配置...
       </div>
     );
   }
@@ -494,7 +579,7 @@ export default function ConfigConsole() {
   if (!config) {
     return (
       <div className="rounded-3xl border border-rose-500/20 bg-rose-500/10 px-6 py-12 text-center text-rose-100">
-        {error || 'Config is unavailable.'}
+        {error || '配置当前不可用。'}
       </div>
     );
   }
@@ -505,15 +590,14 @@ export default function ConfigConsole() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-              Config
+              配置
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              Route-first configuration editor
+              路由优先配置编辑台
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Main flow is modeled explicitly as crawler to formatter to target.
-              Templates stay available as supplementary routing paths without
-              pretending to be part of the primary graph.
+              主链路按抓取器到格式化器到目标的方式明确建模。模板仍然可用，
+              但只作为补充路由存在，不再伪装成主流程图的一部分。
             </p>
           </div>
 
@@ -523,7 +607,7 @@ export default function ConfigConsole() {
               onClick={loadConfig}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
             >
-              {dirty ? 'Discard & refresh' : 'Refresh'}
+              {dirty ? '放弃修改并刷新' : '刷新'}
             </button>
             <button
               type="button"
@@ -531,7 +615,7 @@ export default function ConfigConsole() {
               disabled={restarting}
               className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {restarting ? 'Restarting...' : 'Restart service'}
+              {restarting ? '重启中...' : '重启服务'}
             </button>
             <button
               type="button"
@@ -539,7 +623,7 @@ export default function ConfigConsole() {
               onClick={() => setReviewOpen(true)}
               className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Review & save
+              审阅并保存
             </button>
           </div>
         </div>
@@ -548,7 +632,7 @@ export default function ConfigConsole() {
           <div className="mt-4 flex flex-wrap gap-3">
             {dirty && (
               <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
-                Unsaved changes
+                有未保存修改
               </span>
             )}
             {status && (
@@ -574,9 +658,9 @@ export default function ConfigConsole() {
       </section>
 
       <EntitySection
-        title="Crawlers"
-        description="Primary ingestion definitions. Routing is edited explicitly per crawler."
-        actionLabel="Add crawler"
+        title="抓取器"
+        description="主抓取定义。每个抓取器的路由都通过显式配置维护。"
+        actionLabel="新增抓取器"
         onAdd={() => setEditorState({ mode: 'create', kind: 'crawler' })}
       >
         {(config.crawlers || []).map((crawler, index) => {
@@ -584,33 +668,33 @@ export default function ConfigConsole() {
           return (
             <EntityCard
               key={`crawler-${getCrawlerConnectionKey(crawler, index)}`}
-              title={crawler.name || `Crawler ${index + 1}`}
-              subtitle={crawler.origin || 'No origin configured'}
+              title={crawler.name || `抓取器 ${index + 1}`}
+              subtitle={crawler.origin || '未配置来源'}
               badges={[
-                crawler.task_type || 'article',
-                crawler.cfg_crawler?.engine || 'engine: default',
+                formatTaskType(crawler.task_type || 'article'),
+                `引擎：${formatEngine(crawler.cfg_crawler?.engine)}`,
                 crawler.group || null,
               ]}
               metrics={[
-                { label: 'schedule', value: crawler.cfg_crawler?.cron || '-' },
+                { label: '计划', value: crawler.cfg_crawler?.cron || '-' },
                 {
-                  label: 'cookie',
-                  value: crawler.cfg_crawler?.cookie_file || 'none',
+                  label: 'Cookie',
+                  value: crawler.cfg_crawler?.cookie_file || '无',
                 },
                 {
-                  label: 'formatters',
+                  label: '格式化器',
                   value: String(routing.formatterIds.length),
                 },
-                { label: 'targets', value: String(routing.targetIds.length) },
+                { label: '目标', value: String(routing.targetIds.length) },
               ]}
               actions={[
-                { label: 'Edit', onClick: () => setEditorState({ mode: 'edit', kind: 'crawler', index }) },
-                { label: 'Routing', onClick: () => setRouteEditorState({ kind: 'crawler', index }) },
+                { label: '编辑', onClick: () => setEditorState({ mode: 'edit', kind: 'crawler', index }) },
+                { label: '编辑路由', onClick: () => setRouteEditorState({ kind: 'crawler', index }) },
                 {
-                  label: 'Delete',
+                  label: '删除',
                   tone: 'danger',
                   onClick: () => {
-                    if (confirm(`Delete crawler "${crawler.name || `Crawler ${index + 1}`}"?`)) {
+                    if (confirm(`确认删除抓取器“${crawler.name || `抓取器 ${index + 1}`}”吗？`)) {
                       handleDeleteEntity('crawler', index);
                     }
                   },
@@ -622,9 +706,9 @@ export default function ConfigConsole() {
       </EntitySection>
 
       <EntitySection
-        title="Formatters"
-        description="Render definitions reused by crawler routes."
-        actionLabel="Add formatter"
+        title="格式化器"
+        description="可被多个抓取路由复用的渲染定义。"
+        actionLabel="新增格式化器"
         onAdd={() => setEditorState({ mode: 'create', kind: 'formatter' })}
       >
         {(config.formatters || []).map((formatter, index) => {
@@ -635,29 +719,29 @@ export default function ConfigConsole() {
               title={formatter.name || formatterId}
               subtitle={formatterId}
               badges={[
-                formatter.render_type,
-                formatter.aggregation ? 'aggregation' : null,
-                formatter.deduplication ? 'deduplication' : null,
+                `渲染：${formatRenderType(formatter.render_type)}`,
+                formatter.aggregation ? '聚合' : null,
+                formatter.deduplication ? '去重' : null,
                 formatter.group || null,
               ]}
               metrics={[
                 {
-                  label: 'targets',
+                  label: '目标',
                   value: String(getFormatterTargetIds(config, formatter, index).length),
                 },
                 {
-                  label: 'crawlers',
+                  label: '抓取器',
                   value: String(getFormatterInboundCrawlerCount(config, formatterId)),
                 },
               ]}
               actions={[
-                { label: 'Edit', onClick: () => setEditorState({ mode: 'edit', kind: 'formatter', index }) },
-                { label: 'Targets', onClick: () => setRouteEditorState({ kind: 'formatter', index }) },
+                { label: '编辑', onClick: () => setEditorState({ mode: 'edit', kind: 'formatter', index }) },
+                { label: '编辑目标', onClick: () => setRouteEditorState({ kind: 'formatter', index }) },
                 {
-                  label: 'Delete',
+                  label: '删除',
                   tone: 'danger',
                   onClick: () => {
-                    if (confirm(`Delete formatter "${formatter.name || formatterId}"?`)) {
+                    if (confirm(`确认删除格式化器“${formatter.name || formatterId}”吗？`)) {
                       handleDeleteEntity('formatter', index);
                     }
                   },
@@ -669,9 +753,9 @@ export default function ConfigConsole() {
       </EntitySection>
 
       <EntitySection
-        title="Targets"
-        description="Delivery endpoints. Sensitive fields stay hidden in summaries and review output."
-        actionLabel="Add target"
+        title="目标"
+        description="投递端点。摘要与审阅中会默认隐藏敏感字段。"
+        actionLabel="新增目标"
         onAdd={() => setEditorState({ mode: 'create', kind: 'target' })}
       >
         {(config.forward_targets || []).map((target, index) => {
@@ -680,22 +764,22 @@ export default function ConfigConsole() {
             <EntityCard
               key={`target-${targetId}`}
               title={targetId}
-              subtitle={target.platform}
+              subtitle={formatPlatform(target.platform)}
               badges={[target.group || null]}
               metrics={[
-                { label: 'summary', value: summarizeTarget(target, index) },
+                { label: '摘要', value: summarizeTarget(target, index) },
                 {
-                  label: 'inbound',
+                  label: '入边',
                   value: String(getTargetInboundCount(config, targetId)),
                 },
               ]}
               actions={[
-                { label: 'Edit', onClick: () => setEditorState({ mode: 'edit', kind: 'target', index }) },
+                { label: '编辑', onClick: () => setEditorState({ mode: 'edit', kind: 'target', index }) },
                 {
-                  label: 'Delete',
+                  label: '删除',
                   tone: 'danger',
                   onClick: () => {
-                    if (confirm(`Delete target "${targetId}"?`)) {
+                    if (confirm(`确认删除目标“${targetId}”吗？`)) {
                       handleDeleteEntity('target', index);
                     }
                   },
@@ -707,9 +791,9 @@ export default function ConfigConsole() {
       </EntitySection>
 
       <EntitySection
-        title="Templates"
-        description="Supplementary forwarder/template paths kept separate from the primary crawler route model."
-        actionLabel="Add template"
+        title="模板"
+        description="补充性的 forwarder/template 路径，独立于主抓取链路模型。"
+        actionLabel="新增模板"
         onAdd={() => setEditorState({ mode: 'create', kind: 'forwarder' })}
       >
         {(config.forwarders || []).map((forwarder, index) => {
@@ -722,34 +806,34 @@ export default function ConfigConsole() {
             <EntityCard
               key={`forwarder-${forwarderId}`}
               title={forwarder.name || forwarderId}
-              subtitle={forwarder.origin || 'No matcher origin configured'}
+              subtitle={forwarder.origin || '未配置匹配来源'}
               badges={[
-                forwarder.task_type || 'article',
-                forwarder.cfg_forwarder?.render_type || 'render default',
+                formatTaskType(forwarder.task_type || 'article'),
+                `渲染：${formatRenderType(forwarder.cfg_forwarder?.render_type)}`,
                 forwarder.group || null,
               ]}
               metrics={[
                 {
-                  label: 'graph targets',
+                  label: '图路由目标',
                   value: String(graphTargets.length),
                 },
                 {
-                  label: 'inline subscribers',
+                  label: '内联订阅者',
                   value: String(inlineTargets.length),
                 },
                 {
-                  label: 'effective targets',
+                  label: '生效目标',
                   value: String(effectiveTargets.length),
                 },
               ]}
               actions={[
-                { label: 'Edit', onClick: () => setEditorState({ mode: 'edit', kind: 'forwarder', index }) },
-                { label: 'Targets', onClick: () => setRouteEditorState({ kind: 'forwarder', index }) },
+                { label: '编辑', onClick: () => setEditorState({ mode: 'edit', kind: 'forwarder', index }) },
+                { label: '编辑目标', onClick: () => setRouteEditorState({ kind: 'forwarder', index }) },
                 {
-                  label: 'Delete',
+                  label: '删除',
                   tone: 'danger',
                   onClick: () => {
-                    if (confirm(`Delete template "${forwarder.name || forwarderId}"?`)) {
+                    if (confirm(`确认删除模板“${forwarder.name || forwarderId}”吗？`)) {
                       handleDeleteEntity('forwarder', index);
                     }
                   },
@@ -764,14 +848,13 @@ export default function ConfigConsole() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-              Routing Explorer
+              路由探查器
             </div>
             <h3 className="mt-2 text-2xl font-semibold text-white">
-              Effective crawler delivery path
+              抓取器有效投递路径
             </h3>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Select a crawler to inspect the formatters and targets reached by
-              the current route maps.
+              选择一个抓取器，查看当前路由映射会触达哪些格式化器和目标。
             </p>
           </div>
 
@@ -790,32 +873,32 @@ export default function ConfigConsole() {
 
         {!explorer ? (
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
-            No crawler selected.
+            尚未选择抓取器。
           </div>
         ) : (
           <div className="mt-6 space-y-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm font-semibold text-white">
-                {explorer.crawler.name || `Crawler ${explorer.index + 1}`}
+                {explorer.crawler.name || `抓取器 ${explorer.index + 1}`}
               </div>
               <div className="mt-2 text-sm text-slate-300">
-                {explorer.crawler.origin || 'No origin configured'}
+                {explorer.crawler.origin || '未配置来源'}
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 <Badge tone="neutral">
-                  {explorer.routing.formatterIds.length} formatter(s)
+                  {explorer.routing.formatterIds.length} 个格式化器
                 </Badge>
                 <Badge tone="neutral">
-                  {explorer.routing.targetIds.length} target(s)
+                  {explorer.routing.targetIds.length} 个目标
                 </Badge>
                 {explorer.routing.missingFormatterIds.length > 0 && (
                   <Badge tone="danger">
-                    missing formatter refs: {explorer.routing.missingFormatterIds.join(', ')}
+                    缺失格式化器引用：{explorer.routing.missingFormatterIds.join(', ')}
                   </Badge>
                 )}
                 {explorer.routing.missingTargetIds.length > 0 && (
                   <Badge tone="danger">
-                    missing target refs: {explorer.routing.missingTargetIds.join(', ')}
+                    缺失目标引用：{explorer.routing.missingTargetIds.join(', ')}
                   </Badge>
                 )}
               </div>
@@ -831,11 +914,13 @@ export default function ConfigConsole() {
                     {entry.formatter?.name || entry.formatterId}
                   </div>
                   <div className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                    {entry.formatter?.render_type || 'missing formatter'}
+                    {entry.formatter
+                      ? `渲染：${formatRenderType(entry.formatter.render_type)}`
+                      : '格式化器缺失'}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {entry.targets.length === 0 ? (
-                      <Badge tone="warn">No valid targets</Badge>
+                      <Badge tone="warn">没有有效目标</Badge>
                     ) : (
                       entry.targets.map((target, targetIndex) => (
                         <Badge
@@ -906,16 +991,16 @@ function GlobalDefaultsCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-            Global Defaults
+            全局默认值
           </div>
           <h3 className="mt-2 text-2xl font-semibold text-white">
-            Shared config baselines
+            共享配置基线
           </h3>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Metric label="crawler engine" value={String(snapshot.cfg_crawler.engine || '-')} />
-            <Metric label="default cookie" value={String(snapshot.cfg_crawler.cookie_file || '-')} />
-            <Metric label="target filters" value={String((snapshot.cfg_forward_target.accept_keywords || []).length)} />
-            <Metric label="api port" value={String(snapshot.api.port || '-')} />
+            <Metric label="抓取引擎" value={formatEngine(String(snapshot.cfg_crawler.engine || ''))} />
+            <Metric label="默认 Cookie" value={String(snapshot.cfg_crawler.cookie_file || '-')} />
+            <Metric label="目标过滤词" value={String((snapshot.cfg_forward_target.accept_keywords || []).length)} />
+            <Metric label="API 端口" value={String(snapshot.api.port || '-')} />
           </div>
         </div>
         <button
@@ -923,7 +1008,7 @@ function GlobalDefaultsCard({
           onClick={onEdit}
           className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
         >
-          Edit defaults
+          编辑默认值
         </button>
       </div>
     </section>
@@ -944,13 +1029,13 @@ function IssueCard({
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-6">
       <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-        Validation
+        校验
       </div>
-      <h3 className="mt-2 text-2xl font-semibold text-white">Config health</h3>
+      <h3 className="mt-2 text-2xl font-semibold text-white">配置健康度</h3>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Badge tone="danger">{counts.error} errors</Badge>
-        <Badge tone="warn">{counts.warn} warnings</Badge>
-        <Badge tone="neutral">{counts.info} notes</Badge>
+        <Badge tone="danger">{counts.error} 个错误</Badge>
+        <Badge tone="warn">{counts.warn} 个警告</Badge>
+        <Badge tone="neutral">{counts.info} 条说明</Badge>
       </div>
       <div className="mt-4 space-y-3">
         {issues.slice(0, 4).map((issue) => (
@@ -964,7 +1049,7 @@ function IssueCard({
         ))}
         {issues.length === 0 && (
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            No structural warnings detected.
+            未发现结构性告警。
           </div>
         )}
       </div>
@@ -1165,13 +1250,13 @@ function DefaultsModal({
 
       onSave(nextConfig);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Invalid defaults');
+      setFormError(err instanceof Error ? err.message : '默认值配置无效');
     }
   };
 
   return (
     <ModalFrame
-      title="Edit global defaults"
+      title="编辑全局默认值"
       onClose={onClose}
       footer={
         <>
@@ -1180,14 +1265,14 @@ function DefaultsModal({
             onClick={onClose}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
           >
-            Cancel
+            取消
           </button>
           <button
             type="button"
             onClick={handleSubmit}
             className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
           >
-            Save defaults
+            保存默认值
           </button>
         </>
       }
@@ -1195,24 +1280,24 @@ function DefaultsModal({
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2">
           <SelectField
-            label="Default crawler engine"
+            label="默认抓取引擎"
             value={engine}
             onChange={setEngine}
-            options={['browser', 'cheerio', 'axios', 'api-graphql']}
+            options={ENGINE_OPTIONS}
           />
           <SelectField
-            label="Default cookie file"
+            label="默认 Cookie 文件"
             value={cookieFile}
             onChange={setCookieFile}
             options={['', ...availableCookies]}
           />
-          <InputField label="Default user agent" value={userAgent} onChange={setUserAgent} />
-          <InputField label="API port" value={apiPort} onChange={setApiPort} type="number" />
-          <InputField label="Default interval min" value={intervalMin} onChange={setIntervalMin} type="number" />
-          <InputField label="Default interval max" value={intervalMax} onChange={setIntervalMax} type="number" />
-          <InputField label="Template cron" value={forwarderCron} onChange={setForwarderCron} />
+          <InputField label="默认 User-Agent" value={userAgent} onChange={setUserAgent} />
+          <InputField label="API 端口" value={apiPort} onChange={setApiPort} type="number" />
+          <InputField label="默认最小间隔" value={intervalMin} onChange={setIntervalMin} type="number" />
+          <InputField label="默认最大间隔" value={intervalMax} onChange={setIntervalMax} type="number" />
+          <InputField label="模板 Cron" value={forwarderCron} onChange={setForwarderCron} />
           <SelectField
-            label="Template render type"
+            label="模板渲染类型"
             value={forwarderRenderType}
             onChange={setForwarderRenderType}
             options={RENDER_TYPE_OPTIONS}
@@ -1220,26 +1305,26 @@ function DefaultsModal({
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <TextAreaField label="Template keywords" value={forwarderKeywords} onChange={setForwarderKeywords} rows={4} />
+          <TextAreaField label="模板关键词" value={forwarderKeywords} onChange={setForwarderKeywords} rows={4} />
           <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-4">
-            <CheckboxField label="Immediate notify" checked={immediateNotify} onChange={setImmediateNotify} />
-            <CheckboxField label="Template aggregation" checked={forwarderAggregation} onChange={setForwarderAggregation} />
-            <CheckboxField label="Template deduplication" checked={forwarderDeduplication} onChange={setForwarderDeduplication} />
-            <CheckboxField label="Template batch mode" checked={forwarderBatchMode} onChange={setForwarderBatchMode} />
+            <CheckboxField label="即时通知" checked={immediateNotify} onChange={setImmediateNotify} />
+            <CheckboxField label="模板聚合" checked={forwarderAggregation} onChange={setForwarderAggregation} />
+            <CheckboxField label="模板去重" checked={forwarderDeduplication} onChange={setForwarderDeduplication} />
+            <CheckboxField label="模板批量模式" checked={forwarderBatchMode} onChange={setForwarderBatchMode} />
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <TextAreaField label="Default accept keywords" value={acceptKeywords} onChange={setAcceptKeywords} rows={4} />
-          <TextAreaField label="Default filter keywords" value={filterKeywords} onChange={setFilterKeywords} rows={4} />
+          <TextAreaField label="默认放行关键词" value={acceptKeywords} onChange={setAcceptKeywords} rows={4} />
+          <TextAreaField label="默认过滤关键词" value={filterKeywords} onChange={setFilterKeywords} rows={4} />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <InputField label="Default block until" value={blockUntil} onChange={setBlockUntil} />
-          <TextAreaField label="Default replace regex" value={replaceRegex} onChange={setReplaceRegex} rows={4} />
+          <InputField label="默认阻止至" value={blockUntil} onChange={setBlockUntil} />
+          <TextAreaField label="默认替换正则" value={replaceRegex} onChange={setReplaceRegex} rows={4} />
         </div>
 
-        <TextAreaField label="Default block rules (JSON)" value={blockRules} onChange={setBlockRules} rows={6} />
+        <TextAreaField label="默认阻止规则（JSON）" value={blockRules} onChange={setBlockRules} rows={6} />
 
         {formError && (
           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
@@ -1285,7 +1370,7 @@ function EntityEditorModal({
       | Forwarder);
   }, [entity]);
 
-  const save = () => {
+    const save = () => {
     try {
       if (state.kind === 'crawler') {
         onSave(normalizeCrawlerDraft(draft as Crawler));
@@ -1301,18 +1386,18 @@ function EntityEditorModal({
       }
       onSave(normalizeForwarderDraft(draft as Forwarder));
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Invalid entity');
+      setFormError(err instanceof Error ? err.message : '实体配置无效');
     }
   };
 
   const title =
     state.kind === 'crawler'
-      ? `${state.mode === 'create' ? 'Create' : 'Edit'} crawler`
+      ? `${state.mode === 'create' ? '新建' : '编辑'}抓取器`
       : state.kind === 'formatter'
-        ? `${state.mode === 'create' ? 'Create' : 'Edit'} formatter`
+        ? `${state.mode === 'create' ? '新建' : '编辑'}格式化器`
         : state.kind === 'target'
-          ? `${state.mode === 'create' ? 'Create' : 'Edit'} target`
-          : `${state.mode === 'create' ? 'Create' : 'Edit'} template`;
+          ? `${state.mode === 'create' ? '新建' : '编辑'}目标`
+          : `${state.mode === 'create' ? '新建' : '编辑'}模板`;
 
   return (
     <ModalFrame
@@ -1325,14 +1410,14 @@ function EntityEditorModal({
             onClick={onClose}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
           >
-            Cancel
+            取消
           </button>
           <button
             type="button"
             onClick={save}
             className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
           >
-            Save
+            保存
           </button>
         </>
       }
@@ -1424,10 +1509,10 @@ function RouteEditorModal({
 
   const title =
     state.kind === 'crawler'
-      ? `Edit formatter route for ${config.crawlers?.[state.index]?.name || 'crawler'}`
+      ? `编辑 ${config.crawlers?.[state.index]?.name || '抓取器'} 的格式化器路由`
       : state.kind === 'formatter'
-        ? `Edit targets for ${config.formatters?.[state.index]?.name || 'formatter'}`
-        : `Edit graph targets for ${config.forwarders?.[state.index]?.name || 'template'}`;
+        ? `编辑 ${config.formatters?.[state.index]?.name || '格式化器'} 的目标`
+        : `编辑 ${config.forwarders?.[state.index]?.name || '模板'} 的图路由目标`;
 
   const options =
     state.kind === 'crawler'
@@ -1436,7 +1521,7 @@ function RouteEditorModal({
           return {
             id: formatterId,
             label: formatter.name || formatterId,
-            meta: `${formatter.render_type} • ${getFormatterTargetIds(config, formatter, index).length} target(s)`,
+            meta: `${formatRenderType(formatter.render_type)} • ${getFormatterTargetIds(config, formatter, index).length} 个目标`,
           };
         })
       : (config.forward_targets || []).map((target, index) => {
@@ -1444,7 +1529,7 @@ function RouteEditorModal({
           return {
             id: targetId,
             label: targetId,
-            meta: `${target.platform} • ${summarizeTarget(target, index)}`,
+            meta: `${formatPlatform(target.platform)} • ${summarizeTarget(target, index)}`,
           };
         });
 
@@ -1473,14 +1558,14 @@ function RouteEditorModal({
             onClick={onClose}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
           >
-            Cancel
+            取消
           </button>
           <button
             type="button"
             onClick={() => onSave(sortUnique(selectedIds))}
             className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
           >
-            Save routing
+            保存路由
           </button>
         </>
       }
@@ -1510,10 +1595,10 @@ function RouteEditorModal({
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-sm font-semibold text-white">Preview</div>
+            <div className="text-sm font-semibold text-white">预览</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {previewTargetIds.length === 0 ? (
-                <Badge tone="warn">No resolved targets</Badge>
+                <Badge tone="warn">没有解析出的目标</Badge>
               ) : (
                 previewTargetIds.map((targetId) => (
                   <Badge key={targetId} tone="neutral">
@@ -1527,7 +1612,7 @@ function RouteEditorModal({
           {state.kind === 'forwarder' && inlineSubscriberIds.length > 0 && (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="text-sm font-semibold text-white">
-                Existing inline subscribers
+                已有内联订阅者
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {inlineSubscriberIds.map((targetId) => (
@@ -1557,7 +1642,7 @@ function ReviewModal({
 }) {
   return (
     <ModalFrame
-      title="Review config changes"
+      title="审阅配置变更"
       onClose={onClose}
       footer={
         <>
@@ -1566,7 +1651,7 @@ function ReviewModal({
             onClick={onClose}
             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
           >
-            Keep editing
+            继续编辑
           </button>
           <button
             type="button"
@@ -1574,7 +1659,7 @@ function ReviewModal({
             onClick={onConfirm}
             className="rounded-full bg-emerald-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? 'Saving...' : 'Confirm & save'}
+            {saving ? '保存中...' : '确认并保存'}
           </button>
         </>
       }
@@ -1602,7 +1687,7 @@ function ReviewModal({
                             : 'neutral'
                       }
                     >
-                      {item.kind}
+                      {formatReviewKind(item.kind)}
                     </Badge>
                     <span className="text-sm font-medium text-white">
                       {item.label}
@@ -1618,7 +1703,7 @@ function ReviewModal({
         ))}
         {sections.length === 0 && (
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            No semantic changes detected.
+            未检测到语义层面的配置变更。
           </div>
         )}
       </div>
@@ -1638,14 +1723,14 @@ function CrawlerEditor({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
-        <InputField label="Name" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
-        <InputField label="Group" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
-        <InputField label="Origin" value={String(value.origin || '')} onChange={(origin) => onChange({ ...value, origin })} />
+        <InputField label="名称" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
+        <InputField label="分组" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
+        <InputField label="来源" value={String(value.origin || '')} onChange={(origin) => onChange({ ...value, origin })} />
         <SelectField
-          label="Task type"
+          label="任务类型"
           value={String(value.task_type || 'article')}
           onChange={(task_type) => onChange({ ...value, task_type })}
-          options={['article', 'follows']}
+          options={TASK_TYPE_OPTIONS}
         />
         <InputField
           label="Cron"
@@ -1658,7 +1743,7 @@ function CrawlerEditor({
           }
         />
         <SelectField
-          label="Cookie file"
+          label="Cookie 文件"
           value={String(value.cfg_crawler?.cookie_file || '')}
           onChange={(cookie_file) =>
             onChange({
@@ -1669,7 +1754,7 @@ function CrawlerEditor({
           options={['', ...availableCookies]}
         />
         <SelectField
-          label="Engine"
+          label="引擎"
           value={String(value.cfg_crawler?.engine || 'browser')}
           onChange={(engine) =>
             onChange({
@@ -1677,10 +1762,10 @@ function CrawlerEditor({
               cfg_crawler: { ...(value.cfg_crawler || {}), engine },
             })
           }
-          options={['browser', 'cheerio', 'axios', 'api-graphql']}
+          options={ENGINE_OPTIONS}
         />
         <InputField
-          label="User agent"
+          label="User-Agent"
           value={String(value.cfg_crawler?.user_agent || '')}
           onChange={(user_agent) =>
             onChange({
@@ -1690,7 +1775,7 @@ function CrawlerEditor({
           }
         />
         <InputField
-          label="Interval min"
+          label="最小间隔"
           type="number"
           value={String(value.cfg_crawler?.interval_time?.min ?? '')}
           onChange={(min) =>
@@ -1707,7 +1792,7 @@ function CrawlerEditor({
           }
         />
         <InputField
-          label="Interval max"
+          label="最大间隔"
           type="number"
           value={String(value.cfg_crawler?.interval_time?.max ?? '')}
           onChange={(max) =>
@@ -1724,10 +1809,10 @@ function CrawlerEditor({
           }
         />
       </div>
-      <TextAreaField label="Paths" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
-      <TextAreaField label="Websites" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
+      <TextAreaField label="路径" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
+      <TextAreaField label="网站" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
       <TextAreaField
-        label="Sub task types"
+        label="子任务类型"
         value={linesToText(value.cfg_crawler?.sub_task_type)}
         onChange={(subTaskType) =>
           onChange({
@@ -1741,7 +1826,7 @@ function CrawlerEditor({
         rows={3}
       />
       <CheckboxField
-        label="Immediate notify"
+        label="即时通知"
         checked={Boolean(value.cfg_crawler?.immediate_notify)}
         onChange={(immediate_notify) =>
           onChange({
@@ -1765,13 +1850,13 @@ function FormatterEditor({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <InputField label="ID" value={String(value.id || '')} onChange={(id) => onChange({ ...value, id })} />
-        <InputField label="Name" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
-        <InputField label="Group" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
-        <SelectField label="Render type" value={String(value.render_type || 'text')} onChange={(render_type) => onChange({ ...value, render_type })} options={RENDER_TYPE_OPTIONS} />
+        <InputField label="名称" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
+        <InputField label="分组" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
+        <SelectField label="渲染类型" value={String(value.render_type || 'text')} onChange={(render_type) => onChange({ ...value, render_type })} options={RENDER_TYPE_OPTIONS} />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <CheckboxField label="Aggregation" checked={Boolean(value.aggregation)} onChange={(aggregation) => onChange({ ...value, aggregation })} />
-        <CheckboxField label="Deduplication" checked={Boolean(value.deduplication)} onChange={(deduplication) => onChange({ ...value, deduplication })} />
+        <CheckboxField label="聚合" checked={Boolean(value.aggregation)} onChange={(aggregation) => onChange({ ...value, aggregation })} />
+        <CheckboxField label="去重" checked={Boolean(value.deduplication)} onChange={(deduplication) => onChange({ ...value, deduplication })} />
       </div>
     </div>
   );
@@ -1788,23 +1873,23 @@ function TargetEditor({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <SelectField
-          label="Platform"
+          label="平台"
           value={String(value.platform || 'telegram')}
           onChange={(platform) => onChange({ ...value, platform })}
           options={TARGET_PLATFORM_OPTIONS}
         />
         <InputField
-          label="Target ID"
+          label="目标 ID"
           value={String(value.id || '')}
           onChange={(id) => onChange({ ...value, id })}
         />
         <InputField
-          label="Group"
+          label="分组"
           value={String(value.group || '')}
           onChange={(group) => onChange({ ...value, group })}
         />
         <InputField
-          label="Block until"
+          label="阻止至"
           value={String(value.cfg_platform?.block_until || '')}
           onChange={(block_until) =>
             onChange({
@@ -1817,7 +1902,7 @@ function TargetEditor({
 
       <div className="grid gap-4 md:grid-cols-2">
         <TextAreaField
-          label="Accept keywords"
+          label="放行关键词"
           value={linesToText(value.cfg_platform?.accept_keywords as string[] | undefined)}
           onChange={(acceptKeywords) =>
             onChange({
@@ -1831,7 +1916,7 @@ function TargetEditor({
           rows={4}
         />
         <TextAreaField
-          label="Filter keywords"
+          label="过滤关键词"
           value={linesToText(value.cfg_platform?.filter_keywords as string[] | undefined)}
           onChange={(filterKeywords) =>
             onChange({
@@ -1847,7 +1932,7 @@ function TargetEditor({
       </div>
 
       <TextAreaField
-        label="Replace regex"
+        label="替换正则"
         value={stringifyStructuredField(value.cfg_platform?.replace_regex)}
         onChange={(replace_regex) =>
           onChange({
@@ -1859,7 +1944,7 @@ function TargetEditor({
       />
 
       <TextAreaField
-        label="Block rules (JSON)"
+        label="阻止规则（JSON）"
         value={stringifyStructuredField(value.cfg_platform?.block_rules)}
         onChange={(block_rules) =>
           onChange({
@@ -1873,7 +1958,7 @@ function TargetEditor({
       {value.platform === 'telegram' && (
         <div className="grid gap-4 md:grid-cols-2">
           <InputField
-            label="Bot token"
+            label="机器人 Token"
             type="password"
             value={String(value.cfg_platform?.token || '')}
             onChange={(token) =>
@@ -1884,7 +1969,7 @@ function TargetEditor({
             }
           />
           <InputField
-            label="Chat ID"
+            label="聊天 ID"
             value={String(value.cfg_platform?.chat_id || '')}
             onChange={(chat_id) =>
               onChange({
@@ -1899,7 +1984,7 @@ function TargetEditor({
       {value.platform === 'qq' && (
         <div className="grid gap-4 md:grid-cols-2">
           <InputField
-            label="Endpoint URL"
+            label="接口地址"
             value={String(value.cfg_platform?.url || '')}
             onChange={(url) =>
               onChange({
@@ -1909,7 +1994,7 @@ function TargetEditor({
             }
           />
           <InputField
-            label="Group ID"
+            label="群组 ID"
             value={String(value.cfg_platform?.group_id || '')}
             onChange={(group_id) =>
               onChange({
@@ -1957,7 +2042,7 @@ function TargetEditor({
             }
           />
           <SelectField
-            label="Media check"
+            label="媒体校验"
             value={String(value.cfg_platform?.media_check_level || 'loose')}
             onChange={(media_check_level) =>
               onChange({
@@ -1968,7 +2053,7 @@ function TargetEditor({
                 },
               })
             }
-            options={['strict', 'loose', 'none']}
+            options={MEDIA_CHECK_OPTIONS}
           />
         </div>
       )}
@@ -1987,11 +2072,11 @@ function ForwarderEditor({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <InputField label="ID" value={String(value.id || '')} onChange={(id) => onChange({ ...value, id })} />
-        <InputField label="Name" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
-        <InputField label="Group" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
-        <SelectField label="Task type" value={String(value.task_type || 'article')} onChange={(task_type) => onChange({ ...value, task_type })} options={['article', 'follows']} />
-        <InputField label="Origin" value={String(value.origin || '')} onChange={(origin) => onChange({ ...value, origin })} />
-        <InputField label="Task title" value={String(value.task_title || '')} onChange={(task_title) => onChange({ ...value, task_title })} />
+        <InputField label="名称" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
+        <InputField label="分组" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
+        <SelectField label="任务类型" value={String(value.task_type || 'article')} onChange={(task_type) => onChange({ ...value, task_type })} options={TASK_TYPE_OPTIONS} />
+        <InputField label="来源" value={String(value.origin || '')} onChange={(origin) => onChange({ ...value, origin })} />
+        <InputField label="任务标题" value={String(value.task_title || '')} onChange={(task_title) => onChange({ ...value, task_title })} />
         <InputField
           label="Cron"
           value={String(value.cfg_forwarder?.cron || '')}
@@ -2003,7 +2088,7 @@ function ForwarderEditor({
           }
         />
         <SelectField
-          label="Render type"
+          label="渲染类型"
           value={String(value.cfg_forwarder?.render_type || 'text')}
           onChange={(render_type) =>
             onChange({
@@ -2014,10 +2099,10 @@ function ForwarderEditor({
           options={RENDER_TYPE_OPTIONS}
         />
       </div>
-      <TextAreaField label="Paths" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
-      <TextAreaField label="Websites" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
+      <TextAreaField label="路径" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
+      <TextAreaField label="网站" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
       <TextAreaField
-        label="Keywords"
+        label="关键词"
         value={linesToText(value.cfg_forwarder?.keywords as string[] | undefined)}
         onChange={(keywords) =>
           onChange({
@@ -2032,7 +2117,7 @@ function ForwarderEditor({
       />
       <div className="grid gap-4 md:grid-cols-2">
         <TextAreaField
-          label="Accept keywords"
+          label="放行关键词"
           value={linesToText(value.cfg_forward_target?.accept_keywords)}
           onChange={(accept_keywords) =>
             onChange({
@@ -2046,7 +2131,7 @@ function ForwarderEditor({
           rows={4}
         />
         <TextAreaField
-          label="Filter keywords"
+          label="过滤关键词"
           value={linesToText(value.cfg_forward_target?.filter_keywords)}
           onChange={(filter_keywords) =>
             onChange({
@@ -2061,7 +2146,7 @@ function ForwarderEditor({
         />
       </div>
       <TextAreaField
-        label="Block rules (JSON)"
+        label="阻止规则（JSON）"
         value={stringifyStructuredField(value.cfg_forward_target?.block_rules)}
         onChange={(block_rules) =>
           onChange({
@@ -2076,7 +2161,7 @@ function ForwarderEditor({
       />
       <div className="grid gap-4 md:grid-cols-3">
         <CheckboxField
-          label="Aggregation"
+          label="聚合"
           checked={Boolean(value.cfg_forwarder?.aggregation)}
           onChange={(aggregation) =>
             onChange({
@@ -2086,7 +2171,7 @@ function ForwarderEditor({
           }
         />
         <CheckboxField
-          label="Deduplication"
+          label="去重"
           checked={Boolean(value.cfg_forwarder?.deduplication)}
           onChange={(deduplication) =>
             onChange({
@@ -2096,7 +2181,7 @@ function ForwarderEditor({
           }
         />
         <CheckboxField
-          label="Batch mode"
+          label="批量模式"
           checked={Boolean(value.cfg_forwarder?.batch_mode)}
           onChange={(batch_mode) =>
             onChange({
@@ -2171,7 +2256,7 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: SelectOption[];
 }) {
   return (
     <label className="block">
@@ -2184,8 +2269,13 @@ function SelectField({
         className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/50"
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option || '(empty)'}
+          <option
+            key={typeof option === 'string' ? option : option.value}
+            value={typeof option === 'string' ? option : option.value}
+          >
+            {typeof option === 'string'
+              ? option || '（空）'
+              : option.label}
           </option>
         ))}
       </select>
@@ -2236,7 +2326,7 @@ function ModalFrame({
             onClick={onClose}
             className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-slate-200 transition hover:bg-white/10"
           >
-            Close
+            关闭
           </button>
         </div>
         <div className="max-h-[calc(90vh-144px)] overflow-y-auto px-6 py-6">
@@ -2253,7 +2343,7 @@ function ModalFrame({
 function createEntityDraft(kind: EntityKind) {
   if (kind === 'crawler') {
     return {
-      name: `Crawler ${Date.now()}`,
+      name: `抓取器 ${Date.now()}`,
       task_type: 'article',
       paths: [],
       websites: [],
@@ -2266,7 +2356,7 @@ function createEntityDraft(kind: EntityKind) {
   if (kind === 'formatter') {
     return {
       id: `formatter-${Date.now()}`,
-      name: 'New Formatter',
+      name: '新格式化器',
       render_type: 'text',
     } satisfies Formatter;
   }
@@ -2281,7 +2371,7 @@ function createEntityDraft(kind: EntityKind) {
 
   return {
     id: `forwarder-${Date.now()}`,
-    name: 'New Template',
+    name: '新模板',
     task_type: 'article',
     paths: [],
     websites: [],
@@ -2307,7 +2397,7 @@ function getExistingEntity(config: AppConfig, kind: EntityKind, index: number) {
 
 function normalizeCrawlerDraft(draft: Crawler) {
   if (!draft.name?.trim()) {
-    throw new Error('Crawler name is required.');
+    throw new Error('抓取器名称不能为空。');
   }
 
   return {
@@ -2338,7 +2428,7 @@ function normalizeCrawlerDraft(draft: Crawler) {
 
 function normalizeFormatterDraft(draft: Formatter) {
   if (!draft.id?.trim()) {
-    throw new Error('Formatter ID is required.');
+    throw new Error('格式化器 ID 不能为空。');
   }
 
   return {
@@ -2352,7 +2442,7 @@ function normalizeFormatterDraft(draft: Formatter) {
 
 function normalizeTargetDraft(draft: ForwardTarget) {
   if (!draft.id?.trim()) {
-    throw new Error('Target ID is required.');
+    throw new Error('目标 ID 不能为空。');
   }
 
   const replaceRegex = parseStructuredField(
@@ -2409,7 +2499,7 @@ function normalizeTargetDraft(draft: ForwardTarget) {
 
 function normalizeForwarderDraft(draft: Forwarder) {
   if (!draft.id?.trim()) {
-    throw new Error('Template ID is required.');
+    throw new Error('模板 ID 不能为空。');
   }
 
   const blockRules = parseJsonField(

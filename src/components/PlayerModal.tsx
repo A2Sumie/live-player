@@ -102,7 +102,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         // Merge the parsed config (preserve all fields like streams, licenses, cookies_b64, etc.)
         finalStreamConfig = { ...parsedConfig, mode: 'echo' };
       } catch (e) {
-        alert('Invalid JSON in configuration field');
+        alert('配置字段中的 JSON 无效');
         return;
       }
     }
@@ -146,18 +146,18 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       });
 
       if (response.ok) {
-        alert('Cover image uploaded successfully!');
+        alert('封面上传成功');
         setCoverFile(null);
         // Reset file input
         const fileInput = document.getElementById('coverFile') as HTMLInputElement;
         if (fileInput) fileInput.value = '';
       } else {
         const error = await response.json();
-        alert((error as { error: string }).error || 'Failed to upload cover image');
+        alert((error as { error: string }).error || '封面上传失败');
       }
     } catch (error) {
       console.error('Error uploading cover:', error);
-      alert('Failed to upload cover image');
+      alert('封面上传失败');
     }
     setUploadingCover(false);
   };
@@ -173,14 +173,14 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         const response = await fetch(previewImage);
         imageBlob = await response.blob();
       } catch (error) {
-        alert('Unable to use preview image');
+        alert('无法使用预览图');
         return;
       }
     } else {
       // If no preview, capture directly from video
       const videoUrl = formData.url || player.url;
       if (!videoUrl) {
-        alert('Please enter video URL first');
+        alert('请先填写视频地址');
         return;
       }
 
@@ -188,7 +188,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         imageBlob = await captureCoverImage(videoUrl);
       } catch (error) {
         console.error('Error capturing cover:', error);
-        alert('Cover capture failed, please check if the video URL is correct');
+        alert('封面抓取失败，请检查视频地址是否正确');
         return;
       }
     }
@@ -205,15 +205,15 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       });
 
       if (response.ok) {
-        alert('Cover uploaded successfully!');
+        alert('封面上传成功');
         setPreviewImage(null); // Clear preview image
       } else {
         const error = await response.json();
-        alert((error as { error: string }).error || 'Cover upload failed');
+        alert((error as { error: string }).error || '封面上传失败');
       }
     } catch (error) {
       console.error('Error uploading cover:', error);
-      alert('Cover upload failed');
+      alert('封面上传失败');
     }
     setCapturingCover(false);
   };
@@ -222,7 +222,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
     // Use URL from form data, or player URL if not available
     const videoUrl = formData.url || player?.url;
     if (!videoUrl) {
-      alert('Please enter video URL first');
+      alert('请先填写视频地址');
       return;
     }
 
@@ -239,9 +239,9 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
     } catch (error) {
       console.error('Error previewing cover:', error);
 
-      let errorMessage = 'Preview failed, please check if the video URL is correct';
+      let errorMessage = '预览失败，请检查视频地址是否正确';
       if (isHlsUrl) {
-        errorMessage = 'HLS stream preview failed, please check:\n1. Is the URL correct\n2. Is the video stream accessible\n3. Are there CORS restrictions';
+        errorMessage = 'HLS 流预览失败，请检查：\n1. 地址是否正确\n2. 视频流是否可访问\n3. 是否存在 CORS 限制';
       }
 
       alert(errorMessage);
@@ -252,7 +252,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
   const handleMultiFrameCapture = async () => {
     const videoUrl = formData.url || player?.url;
     if (!videoUrl) {
-      alert('Please enter video URL first');
+      alert('请先填写视频地址');
       return;
     }
 
@@ -265,7 +265,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       setCoverFrames(frames);
     } catch (error) {
       console.error('Error capturing multiple frames:', error);
-      alert('Batch capture failed, please check if the video URL is correct');
+      alert('批量抓帧失败，请检查视频地址是否正确');
       setShowCoverSelector(false);
     }
 
@@ -287,7 +287,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       });
 
       if (response.ok) {
-        alert('Cover uploaded successfully!');
+        alert('封面上传成功');
         setShowCoverSelector(false);
         // Clean up all frame URLs
         coverFrames.forEach(frame => {
@@ -298,11 +298,11 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         setCoverFrames([]);
       } else {
         const error = await response.json();
-        alert((error as { error: string }).error || 'Cover upload failed');
+        alert((error as { error: string }).error || '封面上传失败');
       }
     } catch (error) {
       console.error('Error uploading selected frame:', error);
-      alert('Cover upload failed');
+      alert('封面上传失败');
     }
     setCapturingCover(false);
   };
@@ -340,7 +340,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">
-              {player ? 'Edit Player' : 'Create Player'}
+              {player ? '编辑频道' : '新建频道'}
             </h2>
             <button
               onClick={onClose}
@@ -355,7 +355,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Player Name *
+                频道名称 *
               </label>
               <input
                 type="text"
@@ -365,13 +365,13 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 value={formData.name}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter player name"
+                placeholder="请输入频道名称"
               />
             </div>
 
             <div>
               <label htmlFor="pId" className="block text-sm font-medium text-gray-700 mb-1">
-                Player ID *
+                频道 ID *
               </label>
               <input
                 type="text"
@@ -381,17 +381,17 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 value={formData.pId}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter unique player ID"
+                placeholder="请输入唯一频道 ID"
               />
             </div>
 
             <div>
               <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-1">
-                Playback URL (Output) *
+                播放地址（输出）*
               </label>
               <div className="text-xs text-gray-500 mb-1">
-                For StreamServ managed channels, this is automatically updated when live.
-                You can enter a placeholder (e.g., http://pending) or the expected output URL.
+                对于 StreamServ 托管频道，这里会在开播后自动更新。
+                你可以先填写占位地址（如 `http://pending`）或预期输出地址。
               </div>
               <input
                 type="url"
@@ -407,7 +407,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
             <div>
               <label htmlFor="coverUrl" className="block text-sm font-medium text-gray-700 mb-1">
-                Cover Image URL
+                封面图地址
               </label>
               <input
                 type="url"
@@ -423,7 +423,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
             {player && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cover Image Upload
+                  上传封面
                 </label>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
@@ -440,19 +440,19 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                       disabled={!coverFile || uploadingCover}
                       className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {uploadingCover ? 'Uploading...' : 'Upload'}
+                      {uploadingCover ? '上传中...' : '上传'}
                     </button>
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-500">Or capture from video:</span>
+                      <span className="text-sm text-gray-500">或从视频中抓取：</span>
                       <button
                         type="button"
                         onClick={handlePreviewCapture}
                         disabled={previewingCover || !formData.url}
                         className="px-3 py-1 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        {previewingCover ? 'Capturing...' : 'Quick Capture'}
+                        {previewingCover ? '抓取中...' : '快速抓取'}
                       </button>
                       <button
                         type="button"
@@ -460,25 +460,25 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                         disabled={loadingFrames || !formData.url}
                         className="px-3 py-1 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        {loadingFrames ? 'Capturing...' : 'Multi-frame Selection'}
+                        {loadingFrames ? '抓取中...' : '多帧选择'}
                       </button>
                     </div>
 
                     {formData.url && (formData.url.toLowerCase().includes('.m3u8') || formData.url.toLowerCase().includes('m3u')) && (
                       <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded space-y-1">
-                        <div>💡 HLS stream (.m3u8) detected, capture may take longer, please be patient</div>
+                        <div>💡 检测到 HLS 流（.m3u8），抓取可能较慢，请耐心等待</div>
                         {new URL(formData.url).search && (
-                          <div>🔑 URL parameters detected, will be automatically passed to all video segments</div>
+                          <div>🔑 检测到 URL 参数，抓取时会自动带到所有视频分片</div>
                         )}
                       </div>
                     )}
 
                     {previewImage && (
                       <div className="space-y-2">
-                        <div className="text-sm text-gray-700">Capture Preview:</div>
+                        <div className="text-sm text-gray-700">抓取预览：</div>
                         <img
                           src={previewImage}
-                          alt="Cover preview"
+                          alt="封面预览"
                           className="w-full max-w-xs h-auto border rounded-md"
                         />
                         <button
@@ -487,7 +487,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                           disabled={capturingCover}
                           className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {capturingCover ? 'Uploading...' : 'Use This Cover'}
+                          {capturingCover ? '上传中...' : '使用这张封面'}
                         </button>
                       </div>
                     )}
@@ -498,7 +498,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
 
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                Description
+                描述
               </label>
               <textarea
                 id="description"
@@ -507,13 +507,13 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 value={formData.description}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter player description"
+                placeholder="请输入频道描述"
               />
             </div>
 
             <div>
               <label htmlFor="announcement" className="block text-sm font-medium text-gray-700 mb-1">
-                Announcement
+                公告
               </label>
               <textarea
                 id="announcement"
@@ -522,7 +522,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 value={formData.announcement}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter announcement"
+                placeholder="请输入公告内容"
               />
             </div>
 
@@ -530,14 +530,14 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  Additional Sources
+                  备用信源
                 </label>
                 <button
                   type="button"
                   onClick={() => setSources([...sources, { label: '', url: '' }])}
                   className="text-xs text-blue-600 hover:text-blue-800"
                 >
-                  + Add Source
+                  + 添加信源
                 </button>
               </div>
 
@@ -553,7 +553,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                           newSources[index].label = e.target.value;
                           setSources(newSources);
                         }}
-                        placeholder="Label (e.g. Backup)"
+                        placeholder="标签（如：备用）"
                         className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -566,7 +566,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                           newSources[index].url = e.target.value;
                           setSources(newSources);
                         }}
-                        placeholder="Stream URL"
+                        placeholder="流地址"
                         className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -585,16 +585,16 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                   </div>
                 ))}
                 {sources.length === 0 && (
-                  <div className="text-xs text-gray-400 italic">No additional sources configured</div>
+                  <div className="text-xs text-gray-400 italic">当前未配置备用信源</div>
                 )}
               </div>
             </div>
 
             <div className="border-t border-gray-200 pt-4 mt-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-3">Stream Configuration (Echo)</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-3">流配置（Echo）</h3>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mode</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">模式</label>
                 <div className="flex gap-4">
                   <label className="inline-flex items-center">
                     <input
@@ -605,7 +605,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                       checked={streamConfig.mode === 'udp'}
                       onChange={(e) => setStreamConfig({ ...streamConfig, mode: e.target.value })}
                     />
-                    <span className="ml-2">Direct UDP Push</span>
+                    <span className="ml-2">直接 UDP 推流</span>
                   </label>
                   <label className="inline-flex items-center">
                     <input
@@ -616,7 +616,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                       checked={streamConfig.mode === 'echo'}
                       onChange={(e) => setStreamConfig({ ...streamConfig, mode: e.target.value })}
                     />
-                    <span className="ml-2">Echo Remote M3U8</span>
+                    <span className="ml-2">Echo 远程 M3U8</span>
                   </label>
                 </div>
               </div>
@@ -625,11 +625,11 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 <div className="space-y-4 bg-gray-50 p-4 rounded-md border border-gray-200">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Stream Configuration (JSON)
-                      <span className="text-gray-500 text-xs ml-2">Paste complete DRM package from extension</span>
+                      流配置（JSON）
+                      <span className="text-gray-500 text-xs ml-2">粘贴扩展导出的完整 DRM 包</span>
                     </label>
                     <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded mb-2">
-                      💡 Paste the complete JSON from the Chrome extension. All information (streams, licenses, cookies, PSSH) will be preserved.
+                      💡 直接粘贴 Chrome 扩展导出的完整 JSON。streams、licenses、cookies、PSSH 等信息都会被原样保留。
                     </div>
                     <textarea
                       rows={12}
@@ -649,14 +649,14 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 onClick={onClose}
                 className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
               >
-                Cancel
+                取消
               </button>
               <button
                 type="submit"
                 disabled={loading}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {loading ? 'Saving...' : (player ? 'Update' : 'Create')}
+                {loading ? '保存中...' : (player ? '更新' : '创建')}
               </button>
             </div>
           </form>

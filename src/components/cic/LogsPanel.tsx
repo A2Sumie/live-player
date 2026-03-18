@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 type LogEntry = {
@@ -29,7 +30,7 @@ export default function LogsPanel() {
         setLogs(data);
       }
     } catch (error) {
-      console.error('Failed to fetch logs:', error);
+      console.error('获取日志失败:', error);
     } finally {
       if (!background) {
         setLoading(false);
@@ -82,14 +83,13 @@ export default function LogsPanel() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">
-              System Logs
+              系统日志
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              Recent control-plane activity
+              最近控制面活动
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              The latest 100 D1-backed log records exposed by the existing
-              `GET /api/logs` endpoint.
+              这里展示现有 `GET /api/logs` 接口返回的最近 100 条 D1 日志记录。
             </p>
           </div>
 
@@ -101,14 +101,14 @@ export default function LogsPanel() {
                 onChange={(event) => setAutoRefresh(event.target.checked)}
                 className="accent-cyan-400"
               />
-              Auto refresh
+              自动刷新
             </label>
             <button
               type="button"
               onClick={() => fetchLogs()}
               className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-300"
             >
-              {loading ? 'Refreshing...' : 'Refresh'}
+              {loading ? '刷新中...' : '刷新'}
             </button>
           </div>
         </div>
@@ -119,11 +119,11 @@ export default function LogsPanel() {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-white/5 text-xs uppercase tracking-[0.2em] text-slate-400">
               <tr>
-                <th className="px-4 py-3">Time</th>
-                <th className="px-4 py-3">Level</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Message</th>
-                <th className="px-4 py-3">Details</th>
+                <th className="px-4 py-3">时间</th>
+                <th className="px-4 py-3">级别</th>
+                <th className="px-4 py-3">来源</th>
+                <th className="px-4 py-3">消息</th>
+                <th className="px-4 py-3">详情</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 text-slate-200">
@@ -155,7 +155,7 @@ export default function LogsPanel() {
                         </td>
                         <td className="px-4 py-3">{log.message}</td>
                         <td className="px-4 py-3 text-slate-500">
-                          {log.details ? (expanded ? 'Hide' : 'Show') : '-'}
+                          {log.details ? (expanded ? '收起' : '展开') : '-'}
                         </td>
                       </tr>
                     }
@@ -180,7 +180,7 @@ export default function LogsPanel() {
                     colSpan={5}
                     className="px-4 py-10 text-center text-slate-500"
                   >
-                    No logs found.
+                    暂无日志记录。
                   </td>
                 </tr>
               )}
@@ -196,8 +196,8 @@ function FragmentRow({
   header,
   detail,
 }: {
-  header: React.ReactNode;
-  detail: React.ReactNode;
+  header: ReactNode;
+  detail: ReactNode;
   expanded: boolean;
 }) {
   return (

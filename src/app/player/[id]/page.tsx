@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: PlayerPageProps) {
 
   if (!player) {
     return {
-      title: 'Player Not Found',
+      title: '频道不存在',
     };
   }
 
@@ -49,12 +49,12 @@ export async function generateMetadata({ params }: PlayerPageProps) {
   if (sepIdx !== -1) {
     const prefix = displayName.slice(0, sepIdx).trim();
     // If it's just '§...', use a generic name; otherwise use the prefix like '【ON AIR】'
-    displayName = prefix ? `${prefix} ${player.pId}` : `Player ${player.pId}`;
+    displayName = prefix ? `${prefix} ${player.pId}` : `频道 ${player.pId}`;
   }
 
   return {
     title: `${displayName}`,
-    description: player.description || `watch ${displayName}`,
+    description: player.description || `观看 ${displayName}`,
   };
 }
 
@@ -77,7 +77,7 @@ export default async function PlayerPage({ params, searchParams }: PlayerPagePro
     if (!player.url) {
       const msg = `ID ${resolvedParams.id} has empty url!`;
       logger.error(msg, null, 'PlayerPage');
-      throw new Error("Stream URL is missing in database configuration");
+      throw new Error('数据库配置中缺少播放地址');
     }
 
 
@@ -98,8 +98,8 @@ export default async function PlayerPage({ params, searchParams }: PlayerPagePro
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="p-4 border border-red-500 rounded bg-red-900/50">
-          <h1 className="text-xl font-bold mb-2">Error Loading Player</h1>
-          <p className="font-mono text-sm">{e?.message || "Unknown Error"}</p>
+          <h1 className="text-xl font-bold mb-2">频道加载失败</h1>
+          <p className="font-mono text-sm">{e?.message || '未知错误'}</p>
           {isDebug && <pre className="mt-2 text-xs opacity-50 whitespace-pre-wrap">{e?.stack}</pre>}
         </div>
       </div>
