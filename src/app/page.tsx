@@ -8,7 +8,6 @@ import PlayerCard from '@/components/PlayerCard';
 import PlayerModal from '@/components/PlayerModal';
 import { useAuth } from '@/middleware/WithAuth';
 import type { Player } from '@/lib/db';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -41,9 +40,20 @@ export default function Home() {
     setModalOpen(true);
   };
 
-  const handleEditPlayer = (player: Player) => {
-    setEditingPlayer(player);
-    setModalOpen(true);
+  const handleEditPlayer = async (player: Player) => {
+    try {
+      const response = await fetch(`/api/players/${player.id}`);
+      if (response.ok) {
+        const fullPlayer = await response.json() as Player;
+        setEditingPlayer(fullPlayer);
+        setModalOpen(true);
+      } else {
+        alert('Failed to fetch full player details');
+      }
+    } catch (error) {
+      console.error('Error fetching full player:', error);
+      alert('Failed to fetch full player details');
+    }
   };
 
   const handleDeletePlayer = async (player: Player) => {
@@ -127,9 +137,7 @@ export default function Home() {
         // backgroundImage: 'linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.8)), url("/background.png")'
       }}
     >
-      <div className="absolute top-4 right-4 z-50">
-        <ThemeToggle />
-      </div>
+
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
@@ -144,11 +152,7 @@ export default function Home() {
           </div>
 
           <AdminControls />
-          {user?.role === 'admin' && (
-            <div className="flex justify-center mb-8">
-              <AddPlayerButton onClick={handleAddPlayer} />
-            </div>
-          )}
+
         </div>
 
         {players.length === 0 ? (
@@ -160,14 +164,16 @@ export default function Home() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {players.map((player) => (
-              <PlayerCard
-                key={player.id}
-                player={player}
-                onEdit={handleEditPlayer}
-                onDelete={handleDeletePlayer}
-              />
-            ))}
+            {players.map((player) => {
+              return (
+                <PlayerCard
+                  key={player.id}
+                  player={player}
+                  onEdit={handleEditPlayer}
+                  onDelete={handleDeletePlayer}
+                />
+              );
+            })}
             {user?.role === 'admin' && (
               <AddPlayerButton onClick={handleAddPlayer} variant="card" />
             )}

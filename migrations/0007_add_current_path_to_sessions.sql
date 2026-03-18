@@ -1,0 +1,2 @@
+-- Add current_path column to sessions table
+-- ALTER TABLE sessions ADD COLUMN current_path TEXT;

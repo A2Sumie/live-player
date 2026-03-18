@@ -12,6 +12,7 @@ export const players = sqliteTable('players', {
   announcement: text('announcement'),
   createdBy: integer('created_by'),
   streamConfig: text('stream_config'), // JSON format
+  sources: text('sources', { mode: 'json' }).$type<{ label: string; url: string }[]>(), // Multiple sources
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

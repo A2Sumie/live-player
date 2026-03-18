@@ -4,6 +4,30 @@ import { getCurrentUser } from '@/lib/auth';
 import { eq, and, ne } from 'drizzle-orm';
 import { cache, CACHE_KEYS } from '@/lib/cache';
 
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await context.params;
+    const playerId = parseInt(params.id);
+
+    if (isNaN(playerId)) {
+      return NextResponse.json({ error: 'Invalid Player ID' }, { status: 400 });
+    }
+
+    const db = getDb();
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
+
+    if (!player) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
+
+    const { coverImage, ...playerWithoutImage } = player;
+    return NextResponse.json(playerWithoutImage);
+  } catch (error) {
+    console.error('Error fetching player:', error);
+    return NextResponse.json({ error: 'Failed to fetch player' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await getCurrentUser();
@@ -15,7 +39,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       );
     }
 
-    const { name, pId, description, url, coverUrl, announcement, streamConfig } = await request.json() as any;
+    const { name, pId, description, url, coverUrl, announcement, streamConfig, sources } = await request.json() as any;
     const params = await context.params;
     const playerId = parseInt(params.id);
 
@@ -57,12 +81,14 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         coverUrl: coverUrl || null,
         announcement: announcement || null,
         streamConfig: streamConfig ? JSON.stringify(streamConfig) : null,
+        sources: sources ? sources : null, // Assuming JSON input
         updatedAt: new Date().toISOString()
       })
       .where(eq(players.id, playerId))
       .returning();
 
     cache.delete(CACHE_KEYS.PLAYER_LIST);
+    cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
     cache.delete(CACHE_KEYS.PLAYER(pId));
     // Convert binary coverImage to array for JSON serialization
     // [MODIFIED] Exclude coverImage to save bandwidth
@@ -108,6 +134,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 
     if (existingPlayer) {
       cache.delete(CACHE_KEYS.PLAYER_LIST);
+      cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
       cache.delete(CACHE_KEYS.PLAYER(existingPlayer.pId));
     }
 

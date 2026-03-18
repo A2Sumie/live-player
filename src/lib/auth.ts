@@ -43,13 +43,18 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
 }
 
 /**
- * 验证管理员账户（数据库优先，环境变量作为后备）
+ * 验证管理员账户（优先验证环境变量以规避 bcrypt CPU 超限，数据库作为此要账号）
  */
 export async function validateAdmin(username: string, password: string): Promise<boolean> {
   try {
-    const db = getDb();
+    // 1. 优先验证环境变量主账户 (Fast path, O(1) CPU time)
+    // 彻底解决主账户登录时 bcrypt 导致的 CF Worker 1102 Resource Exceeded 问题
+    if (username === ADMIN_ACCOUNT) {
+      return password === ADMIN_PASSWORD;
+    }
 
-    // 尝试从数据库查找管理员
+    // 2. 尝试从数据库查找管理员（仅针对非主账户）
+    const db = getDb();
     const [admin] = await db
       .select()
       .from(admins)
@@ -57,24 +62,21 @@ export async function validateAdmin(username: string, password: string): Promise
       .limit(1);
 
     if (admin) {
-      // 数据库中存在该管理员
       if (!admin.isActive) {
         console.log(`Admin ${username} is inactive`);
         return false;
       }
 
-      // 验证密码
+      // 注意：次要管理员仍会使用 bcrypt，但通常只有主账户高频登录
       const isValid = await bcrypt.compare(password, admin.passwordHash);
       return isValid;
     }
 
-    // 数据库中不存在，尝试环境变量后备方案
-    console.log('Admin not found in database, falling back to environment variables');
-    return username === ADMIN_ACCOUNT && password === ADMIN_PASSWORD;
+    return false;
 
   } catch (error) {
     console.error('Error validating admin:', error);
-    // 数据库错误时使用环境变量
+    // 兜底方案
     return username === ADMIN_ACCOUNT && password === ADMIN_PASSWORD;
   }
 }

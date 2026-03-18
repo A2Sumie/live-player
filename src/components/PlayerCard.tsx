@@ -1,8 +1,11 @@
 'use client';
 
+import { useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/middleware/WithAuth';
 import type { Player } from '@/lib/db';
+import ObfuscatedText from './ObfuscatedText';
+
 
 interface PlayerCardProps {
   player: Player;
@@ -80,9 +83,10 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
               )}
             </div>
           )}
+
           <div className="p-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-              {player.name}
+              <ObfuscatedText text={player.name} playerId={player.pId} />
             </h3>
             {player.description && (
               <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-3">
@@ -96,20 +100,40 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                 </p>
               </div>
             )}
-            {user?.role === 'admin' && !coverImageSrc && (
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={handleEdit}
-                  className="flex-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="flex-1 px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
-                >
-                  Delete
-                </button>
+            {user?.role === 'admin' && (
+              <div className="flex flex-col gap-2 mt-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleEdit}
+                    className="flex-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex-1 px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!confirm('Stop this relay stream?')) return;
+                      await fetch(`/api/players/${player.id}/relay`, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'stop' }),
+                      });
+                      window.location.reload(); // Simple reload to reflect state
+                    }}
+                    className="flex-1 px-3 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded hover:bg-orange-100 transition-colors"
+                    title="Stop & Archive Stream"
+                  >
+                    ⏹ Stop Relay
+                  </button>
+                </div>
               </div>
             )}
           </div>
