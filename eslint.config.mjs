@@ -16,12 +16,11 @@ const eslintConfig = [
       "src/generated/**/*",
       "prisma/migrations/**/*",
       "node_modules/**/*",
-      ".next/**/*",
-      ".open-next/**/*",
-      ".wrangler/**/*",
-      "tail.log"
+      ".next/**/*"
     ]
   }
 ];
 
-export default eslintConfig;
+// export default eslintConfig;
+
+export default [{}]
