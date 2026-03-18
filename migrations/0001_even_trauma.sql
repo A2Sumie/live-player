@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `sources` text;--> statement-breakpoint

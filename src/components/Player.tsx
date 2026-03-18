@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Player } from '@/lib/db';
 import Artplayer from "artplayer";
 import type { Option } from "artplayer";
 import Hls from "hls.js";
 import artplayerPluginHlsControl from 'artplayer-plugin-hls-control';
+import ObfuscatedText from './ObfuscatedText';
 
 // Extend Artplayer type to include hls property
 declare module 'artplayer' {
@@ -19,11 +20,13 @@ function _Artplayer({
   option,
   getInstance,
   debug = false,
+  player,
   ...rest
 }: {
   option: Omit<Option, "container">;
   getInstance?: (art: Artplayer) => void;
   debug?: boolean;
+  player?: Player;
 } & React.HTMLAttributes<HTMLDivElement>) {
   const artRef = useRef<HTMLDivElement | null>(null);
 
@@ -36,7 +39,7 @@ function _Artplayer({
         const hls = new Hls({
           debug: debug, // Enable debug if requested
           xhrSetup(xhr, tsUrl) {
-            if (tsUrl.includes(".ts") || tsUrl.endsWith(".m3u8")) {
+            if (tsUrl.includes(".ts") || tsUrl.includes(".m4s") || tsUrl.includes(".mp4") || tsUrl.endsWith(".m3u8")) {
               const tsUrlObj = new URL(tsUrl);
               queryParms.forEach((value, key) => {
                 tsUrlObj.searchParams.set(key, value);
@@ -81,13 +84,105 @@ function _Artplayer({
   );
 
   useEffect(() => {
+    // Quality Persistence
+    const saveQuality = (value: string | number) => {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('artplayer_quality', String(value));
+      }
+    };
+
+    const getSavedQuality = () => {
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem('artplayer_quality');
+      }
+      return null;
+    };
+
     const art = new Artplayer({
       ...option,
       container: artRef.current || "",
       customType: {
-        m3u8: playM3u8,
+        m3u8: (video: HTMLVideoElement, url: string, art: Artplayer) => {
+          playM3u8(video, url, art);
+
+          // Apply saved quality after HLS Init
+          const hls = (art as any).hls as Hls;
+          if (hls) {
+            const saved = getSavedQuality();
+
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              // Trigger UI update for plugins that depend on parsed metadata
+              if (art.plugins.artplayerPluginHlsControl) {
+                (art.plugins.artplayerPluginHlsControl as any).update();
+              }
+
+              if (saved) {
+                if (saved === 'auto') {
+                  hls.currentLevel = -1;
+                } else {
+                  const levelIndex = hls.levels.findIndex(l => l.height === parseInt(saved));
+                  if (levelIndex !== -1) {
+                    hls.startLevel = levelIndex;
+                    // Determine if we should lock it.
+                    // If user saved a specific quality, they likely want it forced.
+                    // But startLevel is safer for avoiding stalls if that level is bad initially?
+                    // Let's set nextLevel to force the switch immediately.
+                    hls.nextLevel = levelIndex;
+                  }
+                }
+              }
+            });
+
+            // Listen for changes
+            hls.on(Hls.Events.LEVEL_SWITCHING, (event, data) => {
+              // Verify if it's manual or auto
+              if (hls.autoLevelEnabled) {
+                saveQuality('auto');
+
+                // [FEATURE] Update Quality Control Text to show actual quality
+                const level = hls.levels[data.level];
+                if (level) {
+                  const height = level.height || '';
+
+                  // Robust codec detection
+                  let codecLabel = '';
+                  const attrs = level.attrs || {};
+                  const vCodec = (level.videoCodec || attrs.CODECS || '').toLowerCase();
+
+                  if (vCodec.includes('hvc') || vCodec.includes('hev')) codecLabel = 'HEVC';
+                  else if (vCodec.includes('avc') || vCodec.includes('h264')) codecLabel = 'H264';
+
+                  const label = `Auto (${height}P${codecLabel ? ' ' + codecLabel : ''})`;
+
+                  // Update the quality control text
+                  // We need to wait for the UI to update first, or force it
+                  // Artplayer HLS plugin might reset it on level switch?
+                  const updateLabel = () => {
+                    const qualityCtrl = artRef.current?.querySelector('.art-control-quality');
+                    if (qualityCtrl && qualityCtrl.innerHTML !== label) {
+                      qualityCtrl.innerHTML = label;
+                    }
+                  };
+
+                  // Execute multiple times to ensure we override the plugin
+                  updateLabel();
+                  setTimeout(updateLabel, 100);
+                  setTimeout(updateLabel, 300);
+                  setTimeout(updateLabel, 600);
+                }
+
+              } else {
+                if (hls.levels[data.level]) {
+                  saveQuality(hls.levels[data.level].height);
+                }
+              }
+            });
+          }
+        },
       },
       controls: [
+
+
         {
           name: 'pip',
           index: 20,
@@ -109,20 +204,31 @@ function _Artplayer({
               this.notice.show = 'Picture-in-Picture not supported';
             }
           },
-          mounted: function (el) {
-            // Only show manual control if default PiP might rely on APIs not detected or if we want to override.
-            // But actually, replacing the built-in 'pip' is better.
-            // If we name it 'pip', it might override or duplicate.
-            // Let's rely on this custom one being added.
-          }
         }
       ],
+      settings: [],
       plugins: [
         artplayerPluginHlsControl({
           quality: {
             control: true,
             setting: true,
-            getName: (level: any) => level.height + 'P',
+            getName: (level: any) => {
+              const height = level.height || 'Unknown';
+              const bitrate = level.bitrate ? (level.bitrate / 1000000).toFixed(1) + 'M' : '';
+
+              // Robust codec detection
+              let codec = '';
+              const attrs = level.attrs || {};
+              const vCodec = (level.videoCodec || attrs.CODECS || '').toLowerCase();
+
+              if (vCodec.includes('hvc') || vCodec.includes('hev')) codec = 'HEVC';
+              else if (vCodec.includes('avc') || vCodec.includes('h264')) codec = 'H264';
+
+              let label = `${height}P`;
+              if (codec) label += ` ${codec}`;
+              if (bitrate) label += ` (${bitrate})`;
+              return label;
+            },
             title: 'Quality',
             auto: 'Auto',
           },
@@ -137,11 +243,29 @@ function _Artplayer({
       ]
     });
 
-    // Enforce "No Pause" policy for Live Player
+    // Enforce "No Pause" policy for Live Player & Auto-Sync
     art.on('pause', () => {
       if (!art.option.isLive) return;
       art.notice.show = '直播模式无法暂停';
       art.play();
+    });
+
+    art.on('play', () => {
+      if (!art.option.isLive) return;
+
+      // Aggressive live sync for Safari/Firefox
+      if ((art as any).hls) {
+        const hls = (art as any).hls as Hls;
+        const latency = hls.latency;
+        // If latency is too high (> 5s), jump to live sync position
+        if (latency > 5) {
+          console.log('High latency detected, syncing to live edge...', latency);
+          art.notice.show = '正在同步直播进度...';
+          if (hls.liveSyncPosition) {
+            art.currentTime = hls.liveSyncPosition;
+          }
+        }
+      }
     });
 
     if (getInstance && typeof getInstance === "function") {
@@ -243,30 +367,40 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
 
   return (
     <div className="flex flex-col h-screen">
-      <header className="bg-gray-900 text-white p-4 z-10">
-        <div className="flex items-center justify-between">
+      <header className="text-black p-4 z-10 flex items-center justify-between" style={{ backgroundColor: '#d1e5fc' }}>
+        <div>
           <div className="flex items-center space-x-4">
             <Link
               href="/"
-              className="text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-blue-600 hover:text-blue-800 transition-colors"
             >
               ← Home
             </Link>
-            <h1 className="text-xl font-bold">{player.name}</h1>
+            <h1 className="text-xl font-bold">
+              <ObfuscatedText text={player.name} playerId={player.pId} />
+            </h1>
           </div>
+          {player.description && (
+            <p className="text-gray-700 mt-2 text-sm">{player.description}</p>
+          )}
         </div>
-        {player.description && (
-          <p className="text-gray-300 mt-2 text-sm">{player.description}</p>
-        )}
+        <img
+          src="/logo.png"
+          alt="N2NJ Logo"
+          className={`${player.description ? 'h-20' : 'h-12'} w-auto opacity-80 ml-4 transition-all duration-300`}
+        />
       </header>
 
-      <div className="flex-1 bg-black">
+      <div className="flex-1 bg-black relative">
         <_Artplayer
+          // [FIX] Force remount when player config is updated to reflect source changes
+          key={player.updatedAt?.toString() || player.id}
           option={playerOption}
           getInstance={(art) => {
             artPlayerRef.current = art;
           }}
           debug={debug}
+          player={player}
           className="w-full h-full flex"
           style={{ minHeight: '400px' }}
         />

@@ -43,9 +43,18 @@ export async function generateMetadata({ params }: PlayerPageProps) {
     };
   }
 
+  // Strip §-obfuscation prefix for metadata (tab title doesn't need real name)
+  let displayName = player.name;
+  const sepIdx = displayName.indexOf('§');
+  if (sepIdx !== -1) {
+    const prefix = displayName.slice(0, sepIdx).trim();
+    // If it's just '§...', use a generic name; otherwise use the prefix like '【ON AIR】'
+    displayName = prefix ? `${prefix} ${player.pId}` : `Player ${player.pId}`;
+  }
+
   return {
-    title: `${player.name}`,
-    description: player.description || `watch ${player.name}`,
+    title: `${displayName}`,
+    description: player.description || `watch ${displayName}`,
   };
 }
 

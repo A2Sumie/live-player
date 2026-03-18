@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1771076670126,
+      "tag": "0000_faulty_prima",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1771085612062,
+      "tag": "0001_even_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771688273898,
+      "tag": "0002_damp_morg",
+      "breakpoints": true
+    }
+  ]
 }

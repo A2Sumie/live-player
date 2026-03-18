@@ -35,6 +35,8 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
   const [coverFrames, setCoverFrames] = useState<CoverFrame[]>([]);
   const [loadingFrames, setLoadingFrames] = useState(false);
 
+  const [sources, setSources] = useState<{ label: string; url: string }[]>([]);
+
   useEffect(() => {
     if (isOpen) {
       if (player) {
@@ -46,6 +48,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
           coverUrl: player.coverUrl || '',
           announcement: player.announcement || ''
         });
+        setSources(player.sources || []);
         // Parse streamConfig if available
         try {
           // @ts-ignore
@@ -66,6 +69,7 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
           coverUrl: '',
           announcement: ''
         });
+        setSources([]);
         setStreamConfig({ mode: 'udp', configJson: '{}' });
       }
     } else {
@@ -103,11 +107,15 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
       }
     }
 
+    // Filter empty sources
+    const validSources = sources.filter(s => s.label.trim() && s.url.trim());
+
     onSubmit({
       ...formData,
       createdBy: null, // Auto-populated by backend
       // @ts-ignore
-      streamConfig: finalStreamConfig
+      streamConfig: finalStreamConfig,
+      sources: validSources.length > 0 ? validSources : null
     });
   };
 
@@ -516,6 +524,70 @@ export default function PlayerModal({ isOpen, onClose, onSubmit, player, loading
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter announcement"
               />
+            </div>
+
+            {/* Sources Editor */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Additional Sources
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSources([...sources, { label: '', url: '' }])}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  + Add Source
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {sources.map((source, index) => (
+                  <div key={index} className="flex gap-2 items-start">
+                    <div className="w-1/3">
+                      <input
+                        type="text"
+                        value={source.label}
+                        onChange={(e) => {
+                          const newSources = [...sources];
+                          newSources[index].label = e.target.value;
+                          setSources(newSources);
+                        }}
+                        placeholder="Label (e.g. Backup)"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="url"
+                        value={source.url}
+                        onChange={(e) => {
+                          const newSources = [...sources];
+                          newSources[index].url = e.target.value;
+                          setSources(newSources);
+                        }}
+                        placeholder="Stream URL"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSources = sources.filter((_, i) => i !== index);
+                        setSources(newSources);
+                      }}
+                      className="text-red-500 hover:text-red-700 px-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                {sources.length === 0 && (
+                  <div className="text-xs text-gray-400 italic">No additional sources configured</div>
+                )}
+              </div>
             </div>
 
             <div className="border-t border-gray-200 pt-4 mt-4">

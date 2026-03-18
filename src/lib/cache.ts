@@ -26,8 +26,8 @@ class MemoryCache {
   }
 
   async getOrFetch<T>(
-    key: string, 
-    fetchFn: () => Promise<T>, 
+    key: string,
+    fetchFn: () => Promise<T>,
     ttlMs: number
   ): Promise<T> {
     const cached = this.get<T>(key);
@@ -80,10 +80,11 @@ export const cache = new MemoryCache();
 
 export const CACHE_KEYS = {
   PLAYER_LIST: 'players:list',
+  PLAYER_CONFIGS: 'players:configs',
   PLAYER: (pId: string) => `players:${pId}`,
 } as const;
 
 export const CACHE_TTL = {
-  PLAYER_LIST: 10 * 1000, // 10 seconds
+  PLAYER_LIST: 5 * 1000, // 5 seconds (Fast UI Sync without D1 DOS)
   PLAYER: 60 * 1000, // 1 minute
 } as const;
