@@ -30,7 +30,7 @@ type ProcessorDef = {
 };
 
 type ConfigPayload = {
-  crawlers?: Array<{ name?: string }>;
+  crawlers?: Array<{ name?: string; origin?: string }>;
   processors?: ProcessorDef[];
 };
 
@@ -160,6 +160,31 @@ export default function OpsPanel() {
     return () => clearInterval(timer);
   }, []);
 
+  const resolveCrawlerPlatform = (origin?: string) => {
+    if (!origin) return null;
+    const normalized = origin.toLowerCase();
+    if (normalized.includes('x.com') || normalized.includes('twitter.com')) return '1';
+    if (normalized.includes('instagram.com')) return '2';
+    if (normalized.includes('tiktok.com')) return '3';
+    if (normalized.includes('youtube.com') || normalized.includes('youtu.be')) return '4';
+    return '5';
+  };
+
+  const resolveResendCrawlerName = (platform: number | string, preferredName?: string) => {
+    const targetPlatform = String(platform);
+    const compatible = (config?.crawlers || []).filter(
+      (crawler) =>
+        crawler.name && resolveCrawlerPlatform(crawler.origin) === targetPlatform
+    );
+    if (
+      preferredName &&
+      compatible.some((crawler) => crawler.name === preferredName)
+    ) {
+      return preferredName;
+    }
+    return compatible[0]?.name || '';
+  };
+
   const runCrawler = async () => {
     const res = await fetch('/api/actions/crawlers/run', {
       method: 'POST',
@@ -195,20 +220,29 @@ export default function OpsPanel() {
   };
 
   const resendArticle = async (article: ArticleRow) => {
+    const crawlerName = resolveResendCrawlerName(
+      article.platform,
+      actionState.resendCrawlerName
+    );
+    if (!crawlerName) {
+      setMessage(`重发失败: 未找到平台 ${article.platform} 对应的 crawler`);
+      return;
+    }
+    setActionState((prev) => ({ ...prev, resendCrawlerName: crawlerName }));
     const res = await fetch('/api/actions/articles/resend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         platform: String(article.platform),
         id: article.id,
-        crawlerName: actionState.resendCrawlerName,
+        crawlerName,
       }),
     });
     if (!res.ok) {
       setMessage(`重发失败: ${await res.text()}`);
       return;
     }
-    setMessage(`已重发 ${article.a_id} -> ${actionState.resendCrawlerName}`);
+    setMessage(`已重发 ${article.a_id} -> ${crawlerName}`);
     loadMeta();
   };
 
