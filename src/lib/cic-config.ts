@@ -379,13 +379,13 @@ export function analyzeConfig(config: AppConfig) {
 
   crawlers.forEach((crawler, index) => {
     const route = resolveCrawlerRouting(config, crawler, index);
-    const label = crawler.name || `抓取器 ${index + 1}`;
+    const label = crawler.name || `Crawler ${index + 1}`;
     if (route.formatterIds.length === 0) {
       issues.push({
         id: `crawler-orphan-${index}`,
         level: 'warn',
-        title: `${label} 未配置格式化器路由`,
-        detail: '至少连接一个格式化器前，这个抓取器不会输出任何内容。',
+        title: `${label} 未配置 formatter route`,
+        detail: '至少连接一个 formatter 前，这个 crawler 不会输出任何内容。',
       });
     }
 
@@ -393,7 +393,7 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `crawler-missing-formatters-${index}`,
         level: 'error',
-        title: `${label} 引用了不存在的格式化器`,
+        title: `${label} 引用了不存在的 formatter`,
         detail: route.missingFormatterIds.join(', '),
       });
     }
@@ -402,7 +402,7 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `crawler-missing-targets-${index}`,
         level: 'error',
-        title: `${label} 解析到了不存在的目标`,
+        title: `${label} 解析到了不存在的 target`,
         detail: route.missingTargetIds.join(', '),
       });
     }
@@ -419,8 +419,8 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `formatter-no-target-${formatterId}`,
         level: 'warn',
-        title: `${label} 没有配置目标`,
-        detail: '格式化器输出目前不会到达任何投递端。',
+        title: `${label} 没有配置 target`,
+        detail: '这个 formatter 的输出目前不会到达任何投递端。',
       });
     }
 
@@ -428,7 +428,7 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `formatter-missing-target-${formatterId}`,
         level: 'error',
-        title: `${label} 引用了不存在的目标`,
+        title: `${label} 引用了不存在的 target`,
         detail: missingTargets.join(', '),
       });
     }
@@ -437,8 +437,8 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `formatter-unused-${formatterId}`,
         level: 'warn',
-        title: `${label} 未被任何抓取器使用`,
-        detail: '它已经定义，但当前没有任何抓取器路由经过它。',
+        title: `${label} 未被任何 crawler 使用`,
+        detail: '它已经定义，但当前没有任何 crawler 路由经过它。',
       });
     }
   });
@@ -449,8 +449,8 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `target-orphan-${targetId}`,
         level: 'warn',
-        title: `${targetId} 没有入边路由`,
-        detail: '当前没有任何格式化器或模板会解析到这个目标。',
+        title: `${targetId} 没有 inbound route`,
+        detail: '当前没有任何 formatter 或 template 会解析到这个 target。',
       });
     }
   });
@@ -462,8 +462,8 @@ export function analyzeConfig(config: AppConfig) {
       issues.push({
         id: `forwarder-orphan-${forwarderId}`,
         level: 'warn',
-        title: `${label} 没有目标绑定`,
-        detail: '这个模板路径虽然存在，但目前不会向任何地方发送内容。',
+        title: `${label} 没有 target 绑定`,
+        detail: '这个 template 路径虽然存在，但目前不会向任何地方发送内容。',
       });
     }
   });
@@ -472,7 +472,7 @@ export function analyzeConfig(config: AppConfig) {
     issues.push({
       id: 'processors-preserved',
       level: 'info',
-      title: '配置中存在 processors',
+      title: '检测到 processors',
       detail: '当前界面会原样保留 processor 定义，但本轮并未把它们做成一等可编辑实体。',
     });
   }
@@ -491,12 +491,12 @@ export function buildReviewSummary(
     stableSerialize(sanitizeForDiff(getGlobalDefaultsSnapshot(newConfig)));
   if (globalChanged) {
     sections.push({
-      title: '全局默认值',
+      title: 'Global Defaults / 全局默认值',
       items: [
         {
           kind: 'updated',
-          label: '全局默认值已更新',
-          detail: '抓取器默认值、目标默认值、模板默认值或 API 端口发生了变化。',
+          label: 'Global defaults updated / 全局默认值已更新',
+          detail: 'cfg_crawler、cfg_forward_target、cfg_forwarder 或 api.port 发生了变化。',
         },
       ],
     });
@@ -504,17 +504,17 @@ export function buildReviewSummary(
 
   sections.push(
     diffCollection(
-      '抓取器',
+      'Crawlers / 抓取器',
       originalConfig.crawlers || [],
       newConfig.crawlers || [],
       (crawler, index) => getCrawlerConnectionKey(crawler, index),
-      (crawler, index) => crawler.name || `抓取器 ${index + 1}`
+      (crawler, index) => crawler.name || `Crawler ${index + 1}`
     )
   );
 
   sections.push(
     diffCollection(
-      '格式化器',
+      'Formatters / 格式化器',
       originalConfig.formatters || [],
       newConfig.formatters || [],
       (formatter, index) => getFormatterConnectionKey(formatter, index),
@@ -524,7 +524,7 @@ export function buildReviewSummary(
 
   sections.push(
     diffCollection(
-      '目标',
+      'Targets / 目标',
       originalConfig.forward_targets || [],
       newConfig.forward_targets || [],
       (target, index) => getTargetConnectionKey(target, index),
@@ -535,7 +535,7 @@ export function buildReviewSummary(
 
   sections.push(
     diffCollection(
-      '模板',
+      'Templates / Forwarders / 模板',
       originalConfig.forwarders || [],
       newConfig.forwarders || [],
       (forwarder, index) => getForwarderConnectionKey(forwarder, index),
@@ -547,7 +547,7 @@ export function buildReviewSummary(
   const routeItems = buildRouteReviewItems(originalConfig, newConfig);
   if (routeItems.length > 0) {
     sections.push({
-      title: '路由',
+      title: 'Routing / 路由',
       items: routeItems,
     });
   }
@@ -559,7 +559,7 @@ export function buildReviewSummary(
   }));
   if (warnings.length > 0) {
     sections.push({
-      title: '告警',
+      title: 'Warnings / 告警',
       items: warnings,
     });
   }
@@ -583,17 +583,17 @@ export function summarizeTarget(target: ForwardTarget, index: number) {
   const targetId = getTargetConnectionKey(target, index);
   if (target.platform === 'telegram') {
     const chatId = String(target.cfg_platform?.chat_id || '');
-    return chatId ? `聊天 ${chatId}` : `${targetId}（凭据已隐藏）`;
+    return chatId ? `chat_id ${chatId}` : `${targetId} (credentials hidden)`;
   }
 
   if (target.platform === 'qq') {
     const groupId = String(target.cfg_platform?.group_id || '');
-    return groupId ? `群组 ${groupId}` : `${targetId}（凭据已隐藏）`;
+    return groupId ? `group_id ${groupId}` : `${targetId} (credentials hidden)`;
   }
 
   if (target.platform === 'bilibili') {
     const level = String(target.cfg_platform?.media_check_level || 'default');
-    return `媒体校验 ${level}`;
+    return `media_check_level ${level}`;
   }
 
   return targetId;
@@ -686,7 +686,7 @@ function diffCollection<T>(
       items.push({
         kind: 'removed',
         label: entry.label,
-        detail: '已删除',
+        detail: 'Removed / 已删除',
       });
     }
   });
@@ -696,7 +696,7 @@ function diffCollection<T>(
       items.push({
         kind: 'added',
         label: entry.label,
-        detail: '已新增',
+        detail: 'Added / 已新增',
       });
     }
   });
@@ -714,7 +714,7 @@ function diffCollection<T>(
       items.push({
         kind: 'updated',
         label: entry.label,
-        detail: '已修改',
+        detail: 'Updated / 已修改',
       });
     }
   });
@@ -731,21 +731,21 @@ function buildRouteReviewItems(
     ...compareRouteMap(
       originalConfig.connections?.['crawler-formatter'] || {},
       newConfig.connections?.['crawler-formatter'] || {},
-      '抓取器路由'
+      'crawler-formatter'
     )
   );
   items.push(
     ...compareRouteMap(
       originalConfig.connections?.['formatter-target'] || {},
       newConfig.connections?.['formatter-target'] || {},
-      '格式化器目标'
+      'formatter-target'
     )
   );
   items.push(
     ...compareRouteMap(
       originalConfig.connections?.['forwarder-target'] || {},
       newConfig.connections?.['forwarder-target'] || {},
-      '模板目标'
+      'forwarder-target'
     )
   );
   return items;
@@ -766,7 +766,7 @@ function compareRouteMap(
       items.push({
         kind: 'updated',
         label: `${labelPrefix}: ${key}`,
-        detail: `当前关联 ${(newMap[key] || []).length} 个条目`,
+        detail: `${(newMap[key] || []).length} linked item(s) / 当前关联 ${(newMap[key] || []).length} 个条目`,
       });
     }
   });

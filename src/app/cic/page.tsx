@@ -5,7 +5,7 @@ const DASHBOARD_CARDS = [
   {
     href: '/cic/config',
     title: '配置',
-    body: '管理抓取器、格式化器、目标和模板路由，并在保存前查看语义审阅。',
+    body: '管理 crawler、formatter、target 与 template / forwarder 路由，并在保存前查看语义审阅。',
   },
   {
     href: '/cic/cookies',
@@ -38,7 +38,7 @@ export default async function CICDashboardPage() {
             CIC 操作统一收口
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            现在配置、Cookie、日志和日程已经统一收进同一套鉴权控制台。
+            现在 Config、Cookie、日志和日程已经统一收进同一套鉴权控制台。
             旧入口仍然通过兼容跳转保留，但后续运维操作应以这里为主。
           </p>
         </div>
