@@ -374,7 +374,7 @@ export default function ConfigEditor({ node, onSave, onClose, fullConfig, availa
                             <FormSelect
                                 label="Provider"
                                 value={formData.provider}
-                                options={['Google', 'BigModel', 'Deepseek', 'Openai', 'ByteDance', 'None']}
+                                options={['Google', 'BigModel', 'Deepseek', 'Openai', 'ByteDance', 'QwenMT', 'Mechanical', 'None']}
                                 onChange={(v: string) => handleChange('provider', v)}
                             />
                             <FormInput label="API Key" value={formData.api_key} onChange={(v: string) => handleChange('api_key', v)} type="password" />

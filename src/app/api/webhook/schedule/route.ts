@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json() as {
             title: string;
             description?: string;
+            externalKey?: string;
             scheduleType: string;
             executionTime: string;
             recurrence?: string;
@@ -60,17 +61,35 @@ export async function POST(request: NextRequest) {
         }
 
         const db = getDb();
-        const [schedule] = await db.insert(schedules).values({
+        const now = new Date().toISOString();
+        const payload = {
             title: body.title,
             description: body.description || null,
+            externalKey: body.externalKey || null,
             scheduleType: body.scheduleType,
             executionTime: body.executionTime,
             recurrence: body.recurrence || null,
             payload: body.payload ? JSON.stringify(body.payload) : null,
-            createdBy: 'webhook', // 标记为webhook创建
+            createdBy: 'webhook',
             status: 'pending',
-            updatedAt: new Date().toISOString()
-        }).returning();
+            updatedAt: now,
+        };
+
+        let schedule;
+        if (body.externalKey) {
+            const [upserted] = await db
+                .insert(schedules)
+                .values(payload)
+                .onConflictDoUpdate({
+                    target: schedules.externalKey,
+                    set: payload,
+                })
+                .returning();
+            schedule = upserted;
+        } else {
+            const [created] = await db.insert(schedules).values(payload).returning();
+            schedule = created;
+        }
 
         return NextResponse.json({
             success: true,

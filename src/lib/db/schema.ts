@@ -31,6 +31,7 @@ export const schedules = sqliteTable('schedules', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   title: text('title').notNull(),
   description: text('description'),
+  externalKey: text('external_key').unique(),
   scheduleType: text('schedule_type').notNull(), // 'reminder', 'workflow', 'stream'
   executionTime: text('execution_time').notNull(), // ISO datetime
   recurrence: text('recurrence'), // cron expression or null for one-time

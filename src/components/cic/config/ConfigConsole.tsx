@@ -11,6 +11,7 @@ import {
   Forwarder,
   Formatter,
   ForwardTarget,
+  getCrawlerRouteProcessorId,
   getCrawlerConnectionKey,
   getCrawlerRouteFormatterIds,
   getFormatterConnectionKey,
@@ -21,6 +22,9 @@ import {
   getForwarderGraphTargetIds,
   getForwarderInlineTargetIds,
   getGlobalDefaultsSnapshot,
+  getProcessorConnectionKey,
+  getProcessorRouteFormatterIds,
+  Processor,
   getTargetConnectionKey,
   getTargetInboundCount,
   removeEntityConnections,
@@ -67,7 +71,7 @@ const MEDIA_CHECK_OPTIONS = [
 
 type SelectOption = string | { value: string; label: string };
 
-type EntityKind = 'crawler' | 'formatter' | 'target' | 'forwarder';
+type EntityKind = 'crawler' | 'processor' | 'formatter' | 'target' | 'forwarder';
 
 type EntityEditorState =
   | null
@@ -77,6 +81,7 @@ type EntityEditorState =
 type RouteEditorState =
   | null
   | { kind: 'crawler'; index: number }
+  | { kind: 'processor'; index: number }
   | { kind: 'formatter'; index: number }
   | { kind: 'forwarder'; index: number };
 
@@ -267,7 +272,7 @@ export default function ConfigConsole() {
     setDefaultsOpen(false);
   };
 
-  const handleSaveEntity = (entity: Crawler | Formatter | ForwardTarget | Forwarder) => {
+  const handleSaveEntity = (entity: Crawler | Processor | Formatter | ForwardTarget | Forwarder) => {
     if (!config || !editorState) {
       return;
     }
@@ -288,6 +293,23 @@ export default function ConfigConsole() {
         nextConfig.crawlers[editorState.index] = nextCrawler;
         const newKey = getCrawlerConnectionKey(nextCrawler, editorState.index);
         renameConfigConnectionReferences(nextConfig, 'crawler', oldKey, newKey);
+      }
+    }
+
+    if (editorState.kind === 'processor') {
+      const nextProcessor = entity as Processor;
+      if (editorState.mode === 'create') {
+        nextConfig.processors = [...(nextConfig.processors || []), nextProcessor];
+      } else {
+        const previous = nextConfig.processors?.[editorState.index];
+        if (!nextConfig.processors || !previous) {
+          return;
+        }
+
+        const oldKey = getProcessorConnectionKey(previous, editorState.index);
+        nextConfig.processors[editorState.index] = nextProcessor;
+        const newKey = getProcessorConnectionKey(nextProcessor, editorState.index);
+        renameConfigConnectionReferences(nextConfig, 'processor', oldKey, newKey);
       }
     }
 
@@ -384,6 +406,20 @@ export default function ConfigConsole() {
       nextConfig.formatters.splice(index, 1);
     }
 
+    if (kind === 'processor') {
+      const previous = nextConfig.processors?.[index];
+      if (!previous || !nextConfig.processors) {
+        return;
+      }
+
+      removeEntityConnections(
+        nextConfig,
+        'processor',
+        getProcessorConnectionKey(previous, index)
+      );
+      nextConfig.processors.splice(index, 1);
+    }
+
     if (kind === 'target') {
       const previous = nextConfig.forward_targets?.[index];
       if (!previous || !nextConfig.forward_targets) {
@@ -430,13 +466,48 @@ export default function ConfigConsole() {
       }
 
       const crawlerKey = getCrawlerConnectionKey(crawler, routeEditorState.index);
+      const processorIds = selectedIds
+        .filter((id) => id.startsWith('processor:'))
+        .map((id) => id.replace(/^processor:/, ''));
+      const formatterIds = selectedIds.filter(
+        (id) => !id.startsWith('processor:')
+      );
       nextConfig.connections['crawler-formatter'] =
         nextConfig.connections['crawler-formatter'] || {};
+      nextConfig.connections['crawler-processor'] =
+        nextConfig.connections['crawler-processor'] || {};
 
-      if (selectedIds.length === 0) {
+      if (formatterIds.length === 0) {
         delete nextConfig.connections['crawler-formatter'][crawlerKey];
       } else {
         nextConfig.connections['crawler-formatter'][crawlerKey] =
+          sortUnique(formatterIds);
+      }
+
+      if (processorIds.length === 0) {
+        delete nextConfig.connections['crawler-processor'][crawlerKey];
+      } else {
+        nextConfig.connections['crawler-processor'][crawlerKey] = processorIds[0];
+      }
+    }
+
+    if (routeEditorState.kind === 'processor') {
+      const processor = nextConfig.processors?.[routeEditorState.index];
+      if (!processor) {
+        return;
+      }
+
+      const processorKey = getProcessorConnectionKey(
+        processor,
+        routeEditorState.index
+      );
+      nextConfig.connections['processor-formatter'] =
+        nextConfig.connections['processor-formatter'] || {};
+
+      if (selectedIds.length === 0) {
+        delete nextConfig.connections['processor-formatter'][processorKey];
+      } else {
+        nextConfig.connections['processor-formatter'][processorKey] =
           sortUnique(selectedIds);
       }
     }
@@ -677,6 +748,56 @@ export default function ConfigConsole() {
       </EntitySection>
 
       <EntitySection
+        title="Processors / 处理器"
+        description="独立 processor 定义，可负责翻译、提取、合并和任务规划。"
+        actionLabel="新增 Processor"
+        onAdd={() => setEditorState({ mode: 'create', kind: 'processor' })}
+      >
+        {(config.processors || []).map((processor, index) => {
+          const processorId = getProcessorConnectionKey(processor, index);
+          return (
+            <EntityCard
+              key={`processor-${processorId}`}
+              title={processor.name || processorId}
+              subtitle={processorId}
+              badges={[
+                `provider: ${processor.provider || '-'}`,
+                processor.cfg_processor?.action
+                  ? `action: ${processor.cfg_processor.action}`
+                  : null,
+                processor.group ? `group: ${processor.group}` : null,
+              ]}
+              metrics={[
+                {
+                  label: 'formatters',
+                  value: String(
+                    getProcessorRouteFormatterIds(config, processor, index).length
+                  ),
+                },
+                {
+                  label: 'schedule_url',
+                  value: String(processor.cfg_processor?.schedule_url || '-'),
+                },
+              ]}
+              actions={[
+                { label: '编辑', onClick: () => setEditorState({ mode: 'edit', kind: 'processor', index }) },
+                { label: '编辑路由', onClick: () => setRouteEditorState({ kind: 'processor', index }) },
+                {
+                  label: '删除',
+                  tone: 'danger',
+                  onClick: () => {
+                    if (confirm(`确认删除处理器“${processor.name || processorId}”吗？`)) {
+                      handleDeleteEntity('processor', index);
+                    }
+                  },
+                },
+              ]}
+            />
+          );
+        })}
+      </EntitySection>
+
+      <EntitySection
         title="Formatters / 格式化器"
         description="可被多个 crawler 路由复用的 formatter 定义。"
         actionLabel="新增 Formatter"
@@ -859,6 +980,11 @@ export default function ConfigConsole() {
                 <Badge tone="neutral">
                   {explorer.routing.formatterIds.length} formatter(s)
                 </Badge>
+                {explorer.routing.processorId && (
+                  <Badge tone="neutral">
+                    processor: {explorer.routing.processorId}
+                  </Badge>
+                )}
                 <Badge tone="neutral">
                   {explorer.routing.targetIds.length} target(s)
                 </Badge>
@@ -1318,7 +1444,7 @@ function EntityEditorModal({
   config: AppConfig;
   availableCookies: string[];
   onClose: () => void;
-  onSave: (entity: Crawler | Formatter | ForwardTarget | Forwarder) => void;
+  onSave: (entity: Crawler | Processor | Formatter | ForwardTarget | Forwarder) => void;
 }) {
   const entity =
     state.mode === 'create'
@@ -1328,6 +1454,7 @@ function EntityEditorModal({
   const [formError, setFormError] = useState('');
   const [draft, setDraft] = useState(cloneAppConfig({ entity }).entity as
     | Crawler
+    | Processor
     | Formatter
     | ForwardTarget
     | Forwarder);
@@ -1336,6 +1463,7 @@ function EntityEditorModal({
     setFormError('');
     setDraft(cloneAppConfig({ entity }).entity as
       | Crawler
+      | Processor
       | Formatter
       | ForwardTarget
       | Forwarder);
@@ -1345,6 +1473,10 @@ function EntityEditorModal({
     try {
       if (state.kind === 'crawler') {
         onSave(normalizeCrawlerDraft(draft as Crawler));
+        return;
+      }
+      if (state.kind === 'processor') {
+        onSave(normalizeProcessorDraft(draft as Processor));
         return;
       }
       if (state.kind === 'formatter') {
@@ -1364,6 +1496,8 @@ function EntityEditorModal({
   const title =
     state.kind === 'crawler'
       ? `${state.mode === 'create' ? 'Create Crawler / 新建抓取器' : 'Edit Crawler / 编辑抓取器'}`
+      : state.kind === 'processor'
+        ? `${state.mode === 'create' ? 'Create Processor / 新建处理器' : 'Edit Processor / 编辑处理器'}`
       : state.kind === 'formatter'
         ? `${state.mode === 'create' ? 'Create Formatter / 新建格式化器' : 'Edit Formatter / 编辑格式化器'}`
         : state.kind === 'target'
@@ -1397,7 +1531,14 @@ function EntityEditorModal({
         {state.kind === 'crawler' && (
           <CrawlerEditor
             value={draft as Crawler}
+            processors={config.processors || []}
             availableCookies={availableCookies}
+            onChange={(nextValue) => setDraft(nextValue)}
+          />
+        )}
+        {state.kind === 'processor' && (
+          <ProcessorEditor
+            value={draft as Processor}
             onChange={(nextValue) => setDraft(nextValue)}
           />
         )}
@@ -1444,10 +1585,21 @@ function RouteEditorModal({
 
   useEffect(() => {
     if (state.kind === 'crawler') {
+      const crawler = config.crawlers?.[state.index] || {};
+      const processorId = getCrawlerRouteProcessorId(config, crawler, state.index);
       setSelectedIds(
-        getCrawlerRouteFormatterIds(
+        [
+          ...getCrawlerRouteFormatterIds(config, crawler, state.index),
+          ...(processorId ? [`processor:${processorId}`] : []),
+        ]
+      );
+      return;
+    }
+    if (state.kind === 'processor') {
+      setSelectedIds(
+        getProcessorRouteFormatterIds(
           config,
-          config.crawlers?.[state.index] || {},
+          config.processors?.[state.index] || {},
           state.index
         )
       );
@@ -1481,20 +1633,41 @@ function RouteEditorModal({
   const title =
     state.kind === 'crawler'
       ? `Edit formatter route / 编辑 ${config.crawlers?.[state.index]?.name || 'crawler'} 的 formatter 路由`
+      : state.kind === 'processor'
+        ? `Edit formatter route / 编辑 ${config.processors?.[state.index]?.name || 'processor'} 的 downstream formatter`
       : state.kind === 'formatter'
         ? `Edit targets / 编辑 ${config.formatters?.[state.index]?.name || 'formatter'} 的 targets`
         : `Edit graph targets / 编辑 ${config.forwarders?.[state.index]?.name || 'template'} 的 graph targets`;
 
   const options =
     state.kind === 'crawler'
-      ? (config.formatters || []).map((formatter, index) => {
-          const formatterId = getFormatterConnectionKey(formatter, index);
-          return {
-            id: formatterId,
-            label: formatter.name || formatterId,
-            meta: `render_type: ${formatRenderType(formatter.render_type)} • ${getFormatterTargetIds(config, formatter, index).length} target(s)`,
-          };
-        })
+      ? [
+          ...(config.processors || []).map((processor, index) => {
+            const processorId = getProcessorConnectionKey(processor, index);
+            return {
+              id: `processor:${processorId}`,
+              label: processor.name || processorId,
+              meta: `processor • action: ${processor.cfg_processor?.action || 'translate'}`,
+            };
+          }),
+          ...(config.formatters || []).map((formatter, index) => {
+            const formatterId = getFormatterConnectionKey(formatter, index);
+            return {
+              id: formatterId,
+              label: formatter.name || formatterId,
+              meta: `render_type: ${formatRenderType(formatter.render_type)} • ${getFormatterTargetIds(config, formatter, index).length} target(s)`,
+            };
+          }),
+        ]
+      : state.kind === 'processor'
+        ? (config.formatters || []).map((formatter, index) => {
+            const formatterId = getFormatterConnectionKey(formatter, index);
+            return {
+              id: formatterId,
+              label: formatter.name || formatterId,
+              meta: `render_type: ${formatRenderType(formatter.render_type)} • ${getFormatterTargetIds(config, formatter, index).length} target(s)`,
+            };
+          })
       : (config.forward_targets || []).map((target, index) => {
           const targetId = getTargetConnectionKey(target, index);
           return {
@@ -1507,10 +1680,28 @@ function RouteEditorModal({
   const previewTargetIds =
     state.kind === 'crawler'
       ? sortUnique(
-          selectedIds.flatMap(
-            (formatterId) => config.connections?.['formatter-target']?.[formatterId] || []
-          )
+          selectedIds
+            .filter((id) => !id.startsWith('processor:'))
+            .flatMap(
+              (formatterId) => config.connections?.['formatter-target']?.[formatterId] || []
+            )
+            .concat(
+              selectedIds
+                .filter((id) => id.startsWith('processor:'))
+                .flatMap((id) => {
+                  const processorId = id.replace(/^processor:/, '');
+                  return (config.connections?.['processor-formatter']?.[processorId] || []).flatMap(
+                    (formatterId) => config.connections?.['formatter-target']?.[formatterId] || []
+                  );
+                })
+            )
         )
+      : state.kind === 'processor'
+        ? sortUnique(
+            selectedIds.flatMap(
+              (formatterId) => config.connections?.['formatter-target']?.[formatterId] || []
+            )
+          )
       : selectedIds;
 
   const inlineSubscriberIds =
@@ -1684,10 +1875,12 @@ function ReviewModal({
 
 function CrawlerEditor({
   value,
+  processors,
   availableCookies,
   onChange,
 }: {
   value: Crawler;
+  processors: Processor[];
   availableCookies: string[];
   onChange: (value: Crawler) => void;
 }) {
@@ -1735,6 +1928,23 @@ function CrawlerEditor({
           }
           options={ENGINE_OPTIONS}
         />
+        <SelectField
+          label="cfg_crawler.device_profile / 设备 profile"
+          value={String(value.cfg_crawler?.device_profile || 'desktop_chrome')}
+          onChange={(device_profile) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), device_profile },
+            })
+          }
+          options={[
+            { value: 'desktop_chrome', label: 'desktop_chrome / 桌面 Chrome' },
+            {
+              value: 'mobile_ios_safari_portrait',
+              label: 'mobile_ios_safari_portrait / 手机 Safari 竖屏',
+            },
+          ]}
+        />
         <InputField
           label="cfg_crawler.user_agent / User-Agent"
           value={String(value.cfg_crawler?.user_agent || '')}
@@ -1744,6 +1954,41 @@ function CrawlerEditor({
               cfg_crawler: { ...(value.cfg_crawler || {}), user_agent },
             })
           }
+        />
+        <SelectField
+          label="cfg_crawler.browser_mode / 浏览器模式"
+          value={String(value.cfg_crawler?.browser_mode || 'headless')}
+          onChange={(browser_mode) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), browser_mode },
+            })
+          }
+          options={[
+            { value: 'headless', label: 'headless / 无头' },
+            { value: 'headed-xvfb', label: 'headed-xvfb / 带界面(Xvfb)' },
+          ]}
+        />
+        <SelectField
+          label="cfg_crawler.processor_id / 处理器"
+          value={String(value.cfg_crawler?.processor_id || '')}
+          onChange={(processor_id) =>
+            onChange({
+              ...value,
+              cfg_crawler: {
+                ...(value.cfg_crawler || {}),
+                processor_id: emptyToUndefined(processor_id),
+              },
+            })
+          }
+          options={[
+            '',
+            ...processors.map((processor, index) => ({
+              value: getProcessorConnectionKey(processor, index),
+              label:
+                processor.name || getProcessorConnectionKey(processor, index),
+            })),
+          ]}
         />
         <InputField
           label="cfg_crawler.interval_time.min / 最小间隔"
@@ -1782,6 +2027,62 @@ function CrawlerEditor({
       </div>
       <TextAreaField label="paths / 路径" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
       <TextAreaField label="websites / 网站" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
+      <div className="grid gap-4 md:grid-cols-3">
+        <InputField
+          label="cfg_crawler.session_profile / 会话 profile"
+          value={String(value.cfg_crawler?.session_profile || '')}
+          onChange={(session_profile) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), session_profile },
+            })
+          }
+        />
+        <InputField
+          label="cfg_crawler.locale / 语言"
+          value={String(value.cfg_crawler?.locale || '')}
+          onChange={(locale) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), locale },
+            })
+          }
+        />
+        <InputField
+          label="cfg_crawler.timezone / 时区"
+          value={String(value.cfg_crawler?.timezone || '')}
+          onChange={(timezone) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), timezone },
+            })
+          }
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <TextAreaField
+          label="cfg_crawler.extra_headers (JSON) / 额外请求头"
+          value={stringifyStructuredField(value.cfg_crawler?.extra_headers)}
+          onChange={(extra_headers) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), extra_headers: extra_headers as any },
+            })
+          }
+          rows={6}
+        />
+        <TextAreaField
+          label="cfg_crawler.viewport (JSON) / 视口覆盖"
+          value={stringifyStructuredField(value.cfg_crawler?.viewport)}
+          onChange={(viewport) =>
+            onChange({
+              ...value,
+              cfg_crawler: { ...(value.cfg_crawler || {}), viewport: viewport as any },
+            })
+          }
+          rows={6}
+        />
+      </div>
       <TextAreaField
         label="cfg_crawler.sub_task_type / 子任务类型"
         value={linesToText(value.cfg_crawler?.sub_task_type)}
@@ -1805,6 +2106,152 @@ function CrawlerEditor({
             cfg_crawler: { ...(value.cfg_crawler || {}), immediate_notify },
           })
         }
+      />
+    </div>
+  );
+}
+
+function ProcessorEditor({
+  value,
+  onChange,
+}: {
+  value: Processor;
+  onChange: (value: Processor) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <InputField label="id / ID" value={String(value.id || '')} onChange={(id) => onChange({ ...value, id })} />
+        <InputField label="name / 名称" value={String(value.name || '')} onChange={(name) => onChange({ ...value, name })} />
+        <InputField label="group / 分组" value={String(value.group || '')} onChange={(group) => onChange({ ...value, group })} />
+        <SelectField
+          label="provider / 提供方"
+          value={String(value.provider || 'Google')}
+          onChange={(provider) => onChange({ ...value, provider })}
+          options={['Google', 'BigModel', 'ByteDance', 'Deepseek', 'Openai', 'QwenMT', 'Mechanical', 'None']}
+        />
+        <InputField
+          label="api_key / API 密钥（Mechanical 可留空）"
+          value={String(value.api_key || '')}
+          onChange={(api_key) => onChange({ ...value, api_key })}
+        />
+        <SelectField
+          label="cfg_processor.action / 动作"
+          value={String(value.cfg_processor?.action || 'translate')}
+          onChange={(action) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), action },
+            })
+          }
+          options={['translate', 'extract', 'merge', 'plan']}
+        />
+        <InputField
+          label="cfg_processor.model_id / 模型 ID"
+          value={String(value.cfg_processor?.model_id || '')}
+          onChange={(model_id) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), model_id },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.schedule_url / 日程 webhook"
+          value={String(value.cfg_processor?.schedule_url || '')}
+          onChange={(schedule_url) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), schedule_url },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.base_url / API 地址"
+          value={String(value.cfg_processor?.base_url || '')}
+          onChange={(base_url) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), base_url },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.schedule_api_key / webhook key"
+          type="password"
+          value={String(value.cfg_processor?.schedule_api_key || '')}
+          onChange={(schedule_api_key) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), schedule_api_key },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.result_key / 结果路径"
+          value={String(value.cfg_processor?.result_key || '')}
+          onChange={(result_key) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), result_key },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.max_tokens / 最大输出"
+          type="number"
+          value={String(value.cfg_processor?.max_tokens ?? '')}
+          onChange={(max_tokens) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), max_tokens: numberOrUndefined(max_tokens) },
+            })
+          }
+        />
+        <InputField
+          label="cfg_processor.temperature / 温度"
+          type="number"
+          value={String(value.cfg_processor?.temperature ?? '')}
+          onChange={(temperature) =>
+            onChange({
+              ...value,
+              cfg_processor: { ...(value.cfg_processor || {}), temperature: numberOrUndefined(temperature) },
+            })
+          }
+        />
+      </div>
+      <TextAreaField
+        label="cfg_processor.prompt / 提示词"
+        value={String(value.cfg_processor?.prompt || '')}
+        onChange={(prompt) =>
+          onChange({
+            ...value,
+            cfg_processor: { ...(value.cfg_processor || {}), prompt },
+          })
+        }
+        rows={8}
+      />
+      <TextAreaField
+        label="cfg_processor.extended_payload (JSON) / 扩展参数"
+        value={stringifyStructuredField(value.cfg_processor?.extended_payload)}
+        onChange={(extended_payload) =>
+          onChange({
+            ...value,
+            cfg_processor: { ...(value.cfg_processor || {}), extended_payload: extended_payload as any },
+          })
+        }
+        rows={8}
+      />
+      <TextAreaField
+        label="cfg_processor.output_schema (JSON) / 结构化输出"
+        value={stringifyStructuredField(value.cfg_processor?.output_schema)}
+        onChange={(output_schema) =>
+          onChange({
+            ...value,
+            cfg_processor: { ...(value.cfg_processor || {}), output_schema: output_schema as any },
+          })
+        }
+        rows={8}
       />
     </div>
   );
@@ -2324,6 +2771,18 @@ function createEntityDraft(kind: EntityKind) {
     } satisfies Crawler;
   }
 
+  if (kind === 'processor') {
+    return {
+      id: `processor-${Date.now()}`,
+      name: 'New Processor',
+      provider: 'Google',
+      api_key: '',
+      cfg_processor: {
+        action: 'translate',
+      },
+    } satisfies Processor;
+  }
+
   if (kind === 'formatter') {
     return {
       id: `formatter-${Date.now()}`,
@@ -2357,6 +2816,9 @@ function getExistingEntity(config: AppConfig, kind: EntityKind, index: number) {
   if (kind === 'crawler') {
     return config.crawlers?.[index] || createEntityDraft('crawler');
   }
+  if (kind === 'processor') {
+    return config.processors?.[index] || createEntityDraft('processor');
+  }
   if (kind === 'formatter') {
     return config.formatters?.[index] || createEntityDraft('formatter');
   }
@@ -2383,6 +2845,18 @@ function normalizeCrawlerDraft(draft: Crawler) {
       cron: emptyToUndefined(draft.cfg_crawler?.cron),
       cookie_file: emptyToUndefined(draft.cfg_crawler?.cookie_file),
       engine: emptyToUndefined(draft.cfg_crawler?.engine),
+      browser_mode: emptyToUndefined(draft.cfg_crawler?.browser_mode),
+      device_profile: emptyToUndefined(draft.cfg_crawler?.device_profile),
+      session_profile: emptyToUndefined(draft.cfg_crawler?.session_profile),
+      extra_headers: parseObjectField(
+        stringifyStructuredField(draft.cfg_crawler?.extra_headers)
+      ) as Record<string, string> | undefined,
+      viewport: parseObjectField(
+        stringifyStructuredField(draft.cfg_crawler?.viewport)
+      ) as any,
+      locale: emptyToUndefined(draft.cfg_crawler?.locale),
+      timezone: emptyToUndefined(draft.cfg_crawler?.timezone),
+      processor_id: emptyToUndefined(draft.cfg_crawler?.processor_id),
       user_agent: emptyToUndefined(draft.cfg_crawler?.user_agent),
       interval_time:
         draft.cfg_crawler?.interval_time?.min ||
@@ -2395,6 +2869,50 @@ function normalizeCrawlerDraft(draft: Crawler) {
       sub_task_type: linesOrExisting(draft.cfg_crawler?.sub_task_type),
     },
   } satisfies Crawler;
+}
+
+function normalizeProcessorDraft(draft: Processor) {
+  if (!draft.id?.trim()) {
+    throw new Error('Processor ID 不能为空。');
+  }
+
+  return {
+    ...draft,
+    id: draft.id.trim(),
+    name: emptyToUndefined(draft.name),
+    group: emptyToUndefined(draft.group),
+    provider: draft.provider || 'Google',
+    api_key: draft.api_key || '',
+    cfg_processor: {
+      ...(draft.cfg_processor || {}),
+      action: emptyToUndefined(String(draft.cfg_processor?.action || '')),
+      prompt: emptyToUndefined(String(draft.cfg_processor?.prompt || '')),
+      base_url: emptyToUndefined(String(draft.cfg_processor?.base_url || '')),
+      name: emptyToUndefined(String(draft.cfg_processor?.name || '')),
+      model_id: emptyToUndefined(String(draft.cfg_processor?.model_id || '')),
+      max_tokens:
+        typeof draft.cfg_processor?.max_tokens === 'number'
+          ? draft.cfg_processor.max_tokens
+          : numberOrUndefined(String(draft.cfg_processor?.max_tokens || '')),
+      temperature:
+        typeof draft.cfg_processor?.temperature === 'number'
+          ? draft.cfg_processor.temperature
+          : numberOrUndefined(String(draft.cfg_processor?.temperature || '')),
+      extended_payload: parseObjectField(
+        stringifyStructuredField(draft.cfg_processor?.extended_payload)
+      ),
+      output_schema: parseObjectField(
+        stringifyStructuredField(draft.cfg_processor?.output_schema)
+      ),
+      schedule_url: emptyToUndefined(
+        String(draft.cfg_processor?.schedule_url || '')
+      ),
+      schedule_api_key: emptyToUndefined(
+        String(draft.cfg_processor?.schedule_api_key || '')
+      ),
+      result_key: emptyToUndefined(String(draft.cfg_processor?.result_key || '')),
+    },
+  } satisfies Processor;
 }
 
 function normalizeFormatterDraft(draft: Formatter) {
@@ -2533,6 +3051,18 @@ function parseJsonField(value: string) {
   }
 
   return JSON.parse(trimmed) as Array<Record<string, unknown>>;
+}
+
+function parseObjectField(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed
+    : undefined;
 }
 
 function linesToText(lines?: string[]) {
