@@ -37,6 +37,7 @@ export async function proxyRequest(req: NextRequest, internalPath: string, optio
         // 2. Environment Verification
         const API_SECRET = process.env.INTERNAL_API_SECRET;
         const INTERNAL_API_URL = process.env.INTERNAL_API_URL;
+        const WAF_BYPASS_HEADER = process.env.WAF_BYPASS_HEADER;
 
         if (!API_SECRET || !INTERNAL_API_URL) {
             console.error('Missing environment variables for internal API proxy');
@@ -47,6 +48,7 @@ export async function proxyRequest(req: NextRequest, internalPath: string, optio
         // Ensure headers exist and merge the Auth token
         const headers = new Headers(fetchOptions.headers || {});
         headers.set('Authorization', `Bearer ${API_SECRET}`);
+        applyWafBypassHeader(headers, WAF_BYPASS_HEADER);
 
         // Build the target URL, ensuring no double slashes if INTERNAL_API_URL has a trailing slash
         const baseUrl = INTERNAL_API_URL.endsWith('/') ? INTERNAL_API_URL.slice(0, -1) : INTERNAL_API_URL;
@@ -102,4 +104,23 @@ export async function proxyRequest(req: NextRequest, internalPath: string, optio
             { status: 500 }
         );
     }
+}
+
+function applyWafBypassHeader(headers: Headers, rawHeader?: string) {
+    const normalized = rawHeader?.trim();
+    if (!normalized) {
+        return;
+    }
+
+    const separatorIndex = normalized.indexOf(':');
+    if (separatorIndex > 0) {
+        const name = normalized.slice(0, separatorIndex).trim();
+        const value = normalized.slice(separatorIndex + 1).trim();
+        if (name && value) {
+            headers.set(name, value);
+        }
+        return;
+    }
+
+    headers.set('x-bypass-waf', normalized);
 }
