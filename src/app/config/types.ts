@@ -33,6 +33,19 @@ export interface CrawlerConfig {
     };
     immediate_notify?: boolean;
     user_agent?: string;
+    browser_mode?: 'headless' | 'headed-xvfb' | string;
+    device_profile?: 'desktop_chrome' | 'mobile_ios_safari_portrait' | string;
+    session_profile?: string;
+    extra_headers?: Record<string, string>;
+    viewport?: {
+        width?: number;
+        height?: number;
+        isMobile?: boolean;
+        hasTouch?: boolean;
+        deviceScaleFactor?: number;
+    };
+    locale?: string;
+    timezone?: string;
     processor?: Processor; // Legacy: kept for backward compatibility
     processor_id?: string;  // New: reference to independent processor
     engine?: string;
@@ -48,15 +61,21 @@ export interface Processor {
     id?: string;  // Unique identifier when used as independent config
     name?: string; // Display name
     group?: string;
-    provider: string; // 'Google' | 'BigModel' | 'ByteDance' | 'Deepseek' | 'Openai' | 'QwenMT' | 'None'
+    provider: string; // 'Google' | 'BigModel' | 'ByteDance' | 'Deepseek' | 'Openai' | 'QwenMT' | 'Mechanical' | 'None'
     api_key: string;
     cfg_processor?: { // was cfg_translator
+        action?: 'translate' | 'extract' | 'merge' | 'plan' | string;
         prompt?: string;
         base_url?: string;
         name?: string;
         model_id?: string;
         max_tokens?: number;
         temperature?: number;
+        extended_payload?: Record<string, unknown>;
+        output_schema?: Record<string, unknown>;
+        schedule_url?: string;
+        schedule_api_key?: string;
+        result_key?: string;
     };
 }
 

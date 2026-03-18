@@ -35,6 +35,19 @@ export interface CrawlerConfig {
   };
   immediate_notify?: boolean;
   user_agent?: string;
+  browser_mode?: 'headless' | 'headed-xvfb' | string;
+  device_profile?: 'desktop_chrome' | 'mobile_ios_safari_portrait' | string;
+  session_profile?: string;
+  extra_headers?: Record<string, string>;
+  viewport?: {
+    width?: number;
+    height?: number;
+    isMobile?: boolean;
+    hasTouch?: boolean;
+    deviceScaleFactor?: number;
+  };
+  locale?: string;
+  timezone?: string;
   processor?: Processor;
   processor_id?: string;
   engine?: string;
@@ -53,7 +66,21 @@ export interface Processor {
   group?: string;
   provider?: string;
   api_key?: string;
-  cfg_processor?: Record<string, unknown>;
+  cfg_processor?: {
+    action?: 'translate' | 'extract' | 'merge' | 'plan' | string;
+    prompt?: string;
+    base_url?: string;
+    name?: string;
+    model_id?: string;
+    max_tokens?: number;
+    temperature?: number;
+    extended_payload?: Record<string, unknown>;
+    output_schema?: Record<string, unknown>;
+    schedule_url?: string;
+    schedule_api_key?: string;
+    result_key?: string;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -157,6 +184,10 @@ export function getFormatterConnectionKey(formatter: Formatter, index: number) {
   return formatter.id?.trim() || `__formatter_${index}`;
 }
 
+export function getProcessorConnectionKey(processor: Processor, index: number) {
+  return processor.id?.trim() || `__processor_${index}`;
+}
+
 export function getTargetConnectionKey(target: ForwardTarget, index: number) {
   return target.id?.trim() || `__target_${index}`;
 }
@@ -172,6 +203,24 @@ export function getCrawlerRouteFormatterIds(
 ) {
   const key = getCrawlerConnectionKey(crawler, index);
   return [...(config.connections?.['crawler-formatter']?.[key] || [])];
+}
+
+export function getCrawlerRouteProcessorId(
+  config: AppConfig,
+  crawler: Crawler,
+  index: number
+) {
+  const key = getCrawlerConnectionKey(crawler, index);
+  return config.connections?.['crawler-processor']?.[key] || null;
+}
+
+export function getProcessorRouteFormatterIds(
+  config: AppConfig,
+  processor: Processor,
+  index: number
+) {
+  const key = getProcessorConnectionKey(processor, index);
+  return [...(config.connections?.['processor-formatter']?.[key] || [])];
 }
 
 export function getFormatterTargetIds(
@@ -218,6 +267,14 @@ export function resolveCrawlerRouting(
   index: number
 ) {
   const formatterIds = getCrawlerRouteFormatterIds(config, crawler, index);
+  const processorId = getCrawlerRouteProcessorId(config, crawler, index);
+  const processorFormatterIds = processorId
+    ? config.connections?.['processor-formatter']?.[processorId] || []
+    : [];
+  const effectiveFormatterIds = sortUnique([
+    ...formatterIds,
+    ...processorFormatterIds,
+  ]);
   const formatters = config.formatters || [];
   const targets = config.forward_targets || [];
 
@@ -232,7 +289,7 @@ export function resolveCrawlerRouting(
   const resolvedTargets = new Set<string>();
   const missingTargetIds = new Set<string>();
 
-  formatterIds.forEach((formatterId) => {
+  effectiveFormatterIds.forEach((formatterId) => {
     if (!formatterKeys.has(formatterId)) {
       missingFormatterIds.push(formatterId);
       return;
@@ -250,6 +307,7 @@ export function resolveCrawlerRouting(
   });
 
   return {
+    processorId,
     formatterIds: validFormatterIds,
     targetIds: sortUnique(Array.from(resolvedTargets)),
     missingFormatterIds: sortUnique(missingFormatterIds),
@@ -261,9 +319,19 @@ export function getFormatterInboundCrawlerCount(
   config: AppConfig,
   formatterId: string
 ) {
-  return Object.values(config.connections?.['crawler-formatter'] || {}).filter(
-    (formatterIds) => formatterIds.includes(formatterId)
+  const directCount = Object.values(
+    config.connections?.['crawler-formatter'] || {}
+  ).filter((formatterIds) => formatterIds.includes(formatterId)).length;
+
+  const viaProcessorCount = Object.values(
+    config.connections?.['crawler-processor'] || {}
+  ).filter((processorId) =>
+    (config.connections?.['processor-formatter']?.[processorId] || []).includes(
+      formatterId
+    )
   ).length;
+
+  return directCount + viaProcessorCount;
 }
 
 export function getTargetInboundCount(config: AppConfig, targetId: string) {
@@ -284,7 +352,7 @@ export function getTargetInboundCount(config: AppConfig, targetId: string) {
 
 export function renameConfigConnectionReferences(
   config: AppConfig,
-  kind: 'crawler' | 'formatter' | 'target' | 'forwarder',
+  kind: 'crawler' | 'processor' | 'formatter' | 'target' | 'forwarder',
   oldKey: string,
   newKey: string
 ) {
@@ -313,6 +381,12 @@ export function renameConfigConnectionReferences(
     return;
   }
 
+  if (kind === 'processor') {
+    renameRecordKey(config.connections['processor-formatter'], oldKey, newKey);
+    replaceRecordValue(config.connections['crawler-processor'], oldKey, newKey);
+    return;
+  }
+
   if (kind === 'target') {
     replaceArrayRecordValue(
       config.connections['formatter-target'],
@@ -332,7 +406,7 @@ export function renameConfigConnectionReferences(
 
 export function removeEntityConnections(
   config: AppConfig,
-  kind: 'crawler' | 'formatter' | 'target' | 'forwarder',
+  kind: 'crawler' | 'processor' | 'formatter' | 'target' | 'forwarder',
   key: string
 ) {
   if (!config.connections || !key) {
@@ -352,6 +426,12 @@ export function removeEntityConnections(
     return;
   }
 
+  if (kind === 'processor') {
+    delete config.connections['processor-formatter']?.[key];
+    removeValueFromRecord(config.connections['crawler-processor'], key);
+    return;
+  }
+
   if (kind === 'target') {
     removeValueFromArrayRecord(config.connections['formatter-target'], key);
     removeValueFromArrayRecord(config.connections['forwarder-target'], key);
@@ -364,10 +444,16 @@ export function removeEntityConnections(
 export function analyzeConfig(config: AppConfig) {
   const issues: ConfigIssue[] = [];
   const crawlers = config.crawlers || [];
+  const processors = config.processors || [];
   const formatters = config.formatters || [];
   const targets = config.forward_targets || [];
   const forwarders = config.forwarders || [];
 
+  const processorIds = new Set(
+    processors.map((processor, index) =>
+      getProcessorConnectionKey(processor, index)
+    )
+  );
   const formatterIds = new Set(
     formatters.map((formatter, index) =>
       getFormatterConnectionKey(formatter, index)
@@ -389,6 +475,15 @@ export function analyzeConfig(config: AppConfig) {
       });
     }
 
+    if (route.processorId && !processorIds.has(route.processorId)) {
+      issues.push({
+        id: `crawler-missing-processor-${index}`,
+        level: 'error',
+        title: `${label} 引用了不存在的 processor`,
+        detail: route.processorId,
+      });
+    }
+
     if (route.missingFormatterIds.length > 0) {
       issues.push({
         id: `crawler-missing-formatters-${index}`,
@@ -404,6 +499,45 @@ export function analyzeConfig(config: AppConfig) {
         level: 'error',
         title: `${label} 解析到了不存在的 target`,
         detail: route.missingTargetIds.join(', '),
+      });
+    }
+  });
+
+  processors.forEach((processor, index) => {
+    const processorId = getProcessorConnectionKey(processor, index);
+    const label = processor.name || processorId;
+    const formatterRoute = getProcessorRouteFormatterIds(config, processor, index);
+    const missingFormatters = formatterRoute.filter(
+      (formatterId) => !formatterIds.has(formatterId)
+    );
+    const inboundCrawlerCount = Object.values(
+      config.connections?.['crawler-processor'] || {}
+    ).filter((value) => value === processorId).length;
+
+    if (formatterRoute.length === 0) {
+      issues.push({
+        id: `processor-no-formatter-${processorId}`,
+        level: 'warn',
+        title: `${label} 没有配置 downstream formatter`,
+        detail: 'processor 已定义，但当前没有输出到任何 formatter。',
+      });
+    }
+
+    if (missingFormatters.length > 0) {
+      issues.push({
+        id: `processor-missing-formatter-${processorId}`,
+        level: 'error',
+        title: `${label} 引用了不存在的 formatter`,
+        detail: missingFormatters.join(', '),
+      });
+    }
+
+    if (inboundCrawlerCount === 0) {
+      issues.push({
+        id: `processor-unused-${processorId}`,
+        level: 'warn',
+        title: `${label} 未被任何 crawler 使用`,
+        detail: '它已经定义，但当前没有任何 crawler 路由经过它。',
       });
     }
   });
@@ -468,15 +602,6 @@ export function analyzeConfig(config: AppConfig) {
     }
   });
 
-  if ((config.processors || []).length > 0) {
-    issues.push({
-      id: 'processors-preserved',
-      level: 'info',
-      title: '检测到 processors',
-      detail: '当前界面会原样保留 processor 定义，但本轮并未把它们做成一等可编辑实体。',
-    });
-  }
-
   return issues;
 }
 
@@ -509,6 +634,17 @@ export function buildReviewSummary(
       newConfig.crawlers || [],
       (crawler, index) => getCrawlerConnectionKey(crawler, index),
       (crawler, index) => crawler.name || `Crawler ${index + 1}`
+    )
+  );
+
+  sections.push(
+    diffCollection(
+      'Processors / 处理器',
+      originalConfig.processors || [],
+      newConfig.processors || [],
+      (processor, index) => getProcessorConnectionKey(processor, index),
+      (processor, index) =>
+        processor.name || getProcessorConnectionKey(processor, index)
     )
   );
 
@@ -639,6 +775,22 @@ function replaceArrayRecordValue(
   });
 }
 
+function replaceRecordValue(
+  record: Record<string, string> | undefined,
+  oldValue: string,
+  newValue: string
+) {
+  if (!record || oldValue === newValue) {
+    return;
+  }
+
+  Object.keys(record).forEach((key) => {
+    if (record[key] === oldValue) {
+      record[key] = newValue;
+    }
+  });
+}
+
 function removeValueFromArrayRecord(
   record: Record<string, string[]> | undefined,
   value: string
@@ -650,6 +802,21 @@ function removeValueFromArrayRecord(
   Object.keys(record).forEach((key) => {
     record[key] = record[key].filter((entry) => entry !== value);
     if (record[key].length === 0) {
+      delete record[key];
+    }
+  });
+}
+
+function removeValueFromRecord(
+  record: Record<string, string> | undefined,
+  value: string
+) {
+  if (!record) {
+    return;
+  }
+
+  Object.keys(record).forEach((key) => {
+    if (record[key] === value) {
       delete record[key];
     }
   });
@@ -728,6 +895,20 @@ function buildRouteReviewItems(
 ) {
   const items: ReviewItem[] = [];
   items.push(
+    ...compareScalarRouteMap(
+      originalConfig.connections?.['crawler-processor'] || {},
+      newConfig.connections?.['crawler-processor'] || {},
+      'crawler-processor'
+    )
+  );
+  items.push(
+    ...compareRouteMap(
+      originalConfig.connections?.['processor-formatter'] || {},
+      newConfig.connections?.['processor-formatter'] || {},
+      'processor-formatter'
+    )
+  );
+  items.push(
     ...compareRouteMap(
       originalConfig.connections?.['crawler-formatter'] || {},
       newConfig.connections?.['crawler-formatter'] || {},
@@ -767,6 +948,27 @@ function compareRouteMap(
         kind: 'updated',
         label: `${labelPrefix}: ${key}`,
         detail: `${(newMap[key] || []).length} linked item(s) / 当前关联 ${(newMap[key] || []).length} 个条目`,
+      });
+    }
+  });
+
+  return items;
+}
+
+function compareScalarRouteMap(
+  originalMap: Record<string, string>,
+  newMap: Record<string, string>,
+  labelPrefix: string
+) {
+  const keys = sortUnique([...Object.keys(originalMap), ...Object.keys(newMap)]);
+  const items: ReviewItem[] = [];
+
+  keys.forEach((key) => {
+    if ((originalMap[key] || '') !== (newMap[key] || '')) {
+      items.push({
+        kind: 'updated',
+        label: `${labelPrefix}: ${key}`,
+        detail: `${newMap[key] || '(none)'} / 当前绑定 ${newMap[key] || '无'}`,
       });
     }
   });

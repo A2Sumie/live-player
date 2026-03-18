@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json() as {
             title: string;
             description?: string;
+            externalKey?: string;
             scheduleType: string;
             executionTime: string;
             recurrence?: string;
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
         const [schedule] = await db.insert(schedules).values({
             title: body.title,
             description: body.description || null,
+            externalKey: body.externalKey || null,
             scheduleType: body.scheduleType,
             executionTime: body.executionTime,
             recurrence: body.recurrence || null,

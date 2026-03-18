@@ -8,6 +8,11 @@ const DASHBOARD_CARDS = [
     body: '管理 crawler、formatter、target 与 template / forwarder 路由，并在保存前查看语义审阅。',
   },
   {
+    href: '/cic/ops',
+    title: '运维',
+    body: '查询文章与任务、热运行 crawler、执行 processor，并查看数据库内的处理结果。',
+  },
+  {
     href: '/cic/cookies',
     title: 'Cookie',
     body: '管理抓取器使用的 Cookie 文件，并在需要时重启内部服务。',

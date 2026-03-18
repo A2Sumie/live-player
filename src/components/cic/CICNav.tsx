@@ -8,6 +8,7 @@ import { useAuth } from '@/middleware/WithAuth';
 const NAV_ITEMS = [
   { href: '/cic', label: '总览' },
   { href: '/cic/config', label: '配置' },
+  { href: '/cic/ops', label: '运维' },
   { href: '/cic/cookies', label: 'Cookie' },
   { href: '/cic/logs', label: '日志' },
   { href: '/cic/schedules', label: '日程' },
