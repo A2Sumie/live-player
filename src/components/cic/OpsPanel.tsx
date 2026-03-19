@@ -22,6 +22,9 @@ type ArticleRow = {
   created_at: number;
   content: string | null;
   translation?: string | null;
+  url: string;
+  has_media?: boolean;
+  media?: Array<{ type?: string; url?: string }> | null;
 };
 
 type ProcessorDef = {
@@ -57,8 +60,50 @@ const PLATFORM_OPTIONS = [
   { value: '2', label: 'Instagram' },
   { value: '3', label: 'TikTok' },
   { value: '4', label: 'YouTube' },
-  { value: '5', label: 'Website' },
+  { value: '5', label: '官网 / FC' },
 ];
+
+const PLATFORM_LABELS: Record<string, string> = {
+  '1': 'X',
+  '2': 'Instagram',
+  '3': 'TikTok',
+  '4': 'YouTube',
+  '5': '官网 / FC',
+};
+
+function inferWebsiteSourceLabel(url?: string) {
+  const value = String(url || '').toLowerCase();
+  if (!value) return '官网 / FC';
+  if (value.includes('/gallery') || value.includes('photoga') || value.includes('member_photo_')) {
+    return 'FC PHOTO';
+  }
+  if (value.includes('/diary/official_blog/')) {
+    return 'FC BLOG';
+  }
+  if (value.includes('/ticket/')) {
+    return 'FC TICKET';
+  }
+  if (value.includes('ct=radio')) {
+    return 'FC RADIO';
+  }
+  if (value.includes('/diary/nananiji_movie')) {
+    return 'FC MOVIE';
+  }
+  if (value.includes('/diary/special/')) {
+    return 'FC SPECIAL';
+  }
+  if (value.includes('/news/')) {
+    return '官网 NEWS';
+  }
+  return '官网 / FC';
+}
+
+function inferArticleSourceLabel(article: ArticleRow) {
+  if (String(article.platform) !== '5') {
+    return null;
+  }
+  return inferWebsiteSourceLabel(article.url);
+}
 
 export default function OpsPanel() {
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
@@ -71,6 +116,7 @@ export default function OpsPanel() {
   const [query, setQuery] = useState({
     platform: '1',
     u_id: '',
+    a_id: '',
     q: '',
     limit: '20',
   });
@@ -154,6 +200,7 @@ export default function OpsPanel() {
     params.set('platform', query.platform);
     params.set('limit', query.limit || '20');
     if (query.u_id) params.set('u_id', query.u_id);
+    if (query.a_id) params.set('a_id', query.a_id);
     if (query.q) params.set('q', query.q);
     const res = await fetch(`/api/articles?${params.toString()}`);
     if (res.ok) {
@@ -424,7 +471,8 @@ export default function OpsPanel() {
                   Articles / 文章检索
                 </h3>
                 <p className="mt-2 text-sm text-slate-300">
-                  按平台、账号或关键词查询数据库中的推文、站点文章与其他内容。
+                  按平台、账号、文章 ID、关键词或 URL 片段查询数据库中的内容。
+                  官网与 FC 共用 `官网 / FC` 平台。
                 </p>
               </div>
               <button
@@ -437,7 +485,7 @@ export default function OpsPanel() {
             </div>
 
             <form
-              className="mt-5 grid gap-4 md:grid-cols-4"
+              className="mt-5 grid gap-4 md:grid-cols-5"
               onSubmit={(event) => {
                 event.preventDefault();
                 searchArticles();
@@ -455,7 +503,12 @@ export default function OpsPanel() {
                 onChange={(u_id) => setQuery((prev) => ({ ...prev, u_id }))}
               />
               <InputControl
-                label="关键词"
+                label="article id"
+                value={query.a_id}
+                onChange={(a_id) => setQuery((prev) => ({ ...prev, a_id }))}
+              />
+              <InputControl
+                label="关键词 / URL"
                 value={query.q}
                 onChange={(q) => setQuery((prev) => ({ ...prev, q }))}
               />
@@ -483,12 +536,37 @@ export default function OpsPanel() {
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-white">
-                          {article.username} · {article.u_id}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-sm font-semibold text-white">
+                            {article.username} · {article.u_id}
+                          </div>
+                          <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                            {PLATFORM_LABELS[String(article.platform)] || 'Unknown'}
+                          </span>
+                          {inferArticleSourceLabel(article) && (
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                              {inferArticleSourceLabel(article)}
+                            </span>
+                          )}
+                          {article.has_media && (
+                            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100">
+                              {article.media?.length || 0} media
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 text-xs text-slate-400">
                           {article.a_id} · {new Date(article.created_at * 1000).toLocaleString()}
                         </div>
+                        {article.url && (
+                          <a
+                            href={article.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 block truncate text-xs text-cyan-200/90 hover:text-cyan-100"
+                          >
+                            {article.url}
+                          </a>
+                        )}
                         <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">
                           {article.content || '(empty)'}
                         </p>
