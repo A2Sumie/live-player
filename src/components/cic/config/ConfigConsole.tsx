@@ -60,7 +60,8 @@ const ENGINE_OPTIONS = [
   { value: 'browser', label: 'browser / 浏览器' },
   { value: 'cheerio', label: 'cheerio / Cheerio' },
   { value: 'axios', label: 'axios / Axios' },
-  { value: 'api-graphql', label: 'api-graphql / GraphQL API' },
+  { value: 'api-graphql', label: 'api-graphql / 旧别名(浏览器辅助 GraphQL)' },
+  { value: 'api-unified', label: 'api-unified / X 列表活跃成员一体抓取' },
 ];
 
 const MEDIA_CHECK_OPTIONS = [
@@ -1386,7 +1387,7 @@ function DefaultsModal({
             label="cfg_crawler.cookie_file / 默认 Cookie 文件"
             value={cookieFile}
             onChange={setCookieFile}
-            options={['', ...availableCookies]}
+            options={buildCookieChoices(cookieFile, availableCookies)}
           />
           <InputField label="cfg_crawler.user_agent / 默认 User-Agent" value={userAgent} onChange={setUserAgent} />
           <InputField label="api.port / API 端口" value={apiPort} onChange={setApiPort} type="number" />
@@ -1915,7 +1916,7 @@ function CrawlerEditor({
               cfg_crawler: { ...(value.cfg_crawler || {}), cookie_file },
             })
           }
-          options={['', ...availableCookies]}
+          options={buildCookieChoices(String(value.cfg_crawler?.cookie_file || ''), availableCookies)}
         />
         <SelectField
           label="cfg_crawler.engine / 引擎"
@@ -2024,6 +2025,20 @@ function CrawlerEditor({
             })
           }
         />
+        <InputField
+          label="cfg_crawler.hydrate_limit / 一体补抓上限"
+          type="number"
+          value={String(value.cfg_crawler?.hydrate_limit ?? '')}
+          onChange={(hydrate_limit) =>
+            onChange({
+              ...value,
+              cfg_crawler: {
+                ...(value.cfg_crawler || {}),
+                hydrate_limit: numberOrUndefined(hydrate_limit),
+              },
+            })
+          }
+        />
       </div>
       <TextAreaField label="paths / 路径" value={linesToText(value.paths)} onChange={(paths) => onChange({ ...value, paths: linesFromText(paths) })} rows={4} />
       <TextAreaField label="websites / 网站" value={linesToText(value.websites)} onChange={(websites) => onChange({ ...value, websites: linesFromText(websites) })} rows={4} />
@@ -2097,6 +2112,20 @@ function CrawlerEditor({
         }
         rows={3}
       />
+      <TextAreaField
+        label="cfg_crawler.hydrate_users / 一体补抓用户"
+        value={linesToText(value.cfg_crawler?.hydrate_users)}
+        onChange={(hydrateUsers) =>
+          onChange({
+            ...value,
+            cfg_crawler: {
+              ...(value.cfg_crawler || {}),
+              hydrate_users: linesFromText(hydrateUsers),
+            },
+          })
+        }
+        rows={3}
+      />
       <CheckboxField
         label="cfg_crawler.immediate_notify / 即时通知"
         checked={Boolean(value.cfg_crawler?.immediate_notify)}
@@ -2106,6 +2135,58 @@ function CrawlerEditor({
             cfg_crawler: { ...(value.cfg_crawler || {}), immediate_notify },
           })
         }
+      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <InputField
+          label="cfg_crawler.aggregation.cron / 聚合 Cron"
+          value={String(value.cfg_crawler?.aggregation?.cron || '')}
+          onChange={(cron) =>
+            onChange({
+              ...value,
+              cfg_crawler: {
+                ...(value.cfg_crawler || {}),
+                aggregation: { ...(value.cfg_crawler?.aggregation || {}), cron },
+              },
+            })
+          }
+        />
+        <SelectField
+          label="cfg_crawler.aggregation.processor_id / 聚合处理器"
+          value={String(value.cfg_crawler?.aggregation?.processor_id || '')}
+          onChange={(processor_id) =>
+            onChange({
+              ...value,
+              cfg_crawler: {
+                ...(value.cfg_crawler || {}),
+                aggregation: {
+                  ...(value.cfg_crawler?.aggregation || {}),
+                  processor_id: emptyToUndefined(processor_id),
+                },
+              },
+            })
+          }
+          options={[
+            '',
+            ...processors.map((processor, index) => ({
+              value: getProcessorConnectionKey(processor, index),
+              label: processor.name || getProcessorConnectionKey(processor, index),
+            })),
+          ]}
+        />
+      </div>
+      <TextAreaField
+        label="cfg_crawler.aggregation.prompt / 聚合提示词"
+        value={String(value.cfg_crawler?.aggregation?.prompt || '')}
+        onChange={(prompt) =>
+          onChange({
+            ...value,
+            cfg_crawler: {
+              ...(value.cfg_crawler || {}),
+              aggregation: { ...(value.cfg_crawler?.aggregation || {}), prompt },
+            },
+          })
+        }
+        rows={5}
       />
     </div>
   );
@@ -2867,6 +2948,18 @@ function normalizeCrawlerDraft(draft: Crawler) {
             }
           : undefined,
       sub_task_type: linesOrExisting(draft.cfg_crawler?.sub_task_type),
+      hydrate_users: linesOrExisting(draft.cfg_crawler?.hydrate_users),
+      hydrate_limit: draft.cfg_crawler?.hydrate_limit,
+      aggregation:
+        draft.cfg_crawler?.aggregation?.cron ||
+        draft.cfg_crawler?.aggregation?.prompt ||
+        draft.cfg_crawler?.aggregation?.processor_id
+          ? {
+              cron: emptyToUndefined(draft.cfg_crawler?.aggregation?.cron),
+              prompt: emptyToUndefined(draft.cfg_crawler?.aggregation?.prompt),
+              processor_id: emptyToUndefined(draft.cfg_crawler?.aggregation?.processor_id),
+            }
+          : undefined,
     },
   } satisfies Crawler;
 }
@@ -3079,6 +3172,12 @@ function linesFromText(value: string) {
 
 function linesOrExisting(value?: string[]) {
   return value && value.length > 0 ? sortUnique(value) : undefined;
+}
+
+function buildCookieChoices(currentValue: string, availableCookies: string[]) {
+  return [''].concat(
+    Array.from(new Set([currentValue, ...availableCookies].filter(Boolean)))
+  );
 }
 
 function emptyToUndefined(value?: string | null) {
