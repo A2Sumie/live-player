@@ -126,6 +126,7 @@ export default function ConfigConsole() {
   const [status, setStatus] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [editorState, setEditorState] = useState<EntityEditorState>(null);
   const [routeEditorState, setRouteEditorState] = useState<RouteEditorState>(null);
@@ -578,10 +579,19 @@ export default function ConfigConsole() {
         throw new Error(await res.text());
       }
 
+      const data = (await res.json()) as {
+        message?: string;
+        runtime?: { generation?: number };
+      };
+
       setOriginalConfig(cloneAppConfig(config));
       setDirty(false);
       setReviewOpen(false);
-      setStatus('已保存。请重启内部服务以应用新配置。');
+      setStatus(
+        data.runtime?.generation !== undefined
+          ? `${data.message || '已保存并热重载。'} 代次 ${data.runtime.generation}。`
+          : data.message || '已保存。'
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : '保存失败';
       setStatus(`保存失败：${message}`);
@@ -590,7 +600,32 @@ export default function ConfigConsole() {
     }
   };
 
-  const handleRestart = async () => {
+  const handleReload = async () => {
+    setReloading(true);
+    try {
+      const res = await fetch('/api/runtime/reload', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const data = (await res.json()) as {
+        message?: string;
+        runtime?: { generation?: number };
+      };
+      setStatus(
+        data.runtime?.generation !== undefined
+          ? `${data.message || '已完成热重载。'} 代次 ${data.runtime.generation}。`
+          : data.message || '已完成热重载。'
+      );
+    } catch (err) {
+      setStatus(
+        `热重载失败：${err instanceof Error ? err.message : '未知错误'}`
+      );
+    } finally {
+      setReloading(false);
+    }
+  };
+
+  const handleHardRestart = async () => {
     if (!confirm('现在重启内部服务吗？')) {
       return;
     }
@@ -644,7 +679,7 @@ export default function ConfigConsole() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={loadConfig}
@@ -654,11 +689,19 @@ export default function ConfigConsole() {
             </button>
             <button
               type="button"
-              onClick={handleRestart}
+              onClick={handleReload}
+              disabled={reloading}
+              className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {reloading ? '热重载中...' : '热重载运行时'}
+            </button>
+            <button
+              type="button"
+              onClick={handleHardRestart}
               disabled={restarting}
               className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {restarting ? '重启中...' : '重启服务'}
+              {restarting ? '重启中...' : '硬重启服务'}
             </button>
             <button
               type="button"
