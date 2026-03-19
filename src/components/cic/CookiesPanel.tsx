@@ -34,6 +34,7 @@ export default function CookiesPanel() {
   const [editorLoading, setEditorLoading] = useState(false);
   const [selectedCookies, setSelectedCookies] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [syncingCrawlerName, setSyncingCrawlerName] = useState<string | null>(null);
 
@@ -209,8 +210,23 @@ export default function CookiesPanel() {
     }
   };
 
+  const handleReload = async () => {
+    setReloading(true);
+    try {
+      const res = await fetch('/api/runtime/reload', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      alert('已发送热重载请求。');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '热重载失败');
+    } finally {
+      setReloading(false);
+    }
+  };
+
   const handleRestart = async () => {
-    if (!confirm('确认现在重启内部服务吗？')) {
+    if (!confirm('确认现在硬重启内部服务吗？')) {
       return;
     }
 
@@ -220,9 +236,9 @@ export default function CookiesPanel() {
       if (!res.ok) {
         throw new Error(await res.text());
       }
-      alert('已发送重启请求。');
+      alert('已发送硬重启请求。');
     } catch (err) {
-      alert(err instanceof Error ? err.message : '重启失败');
+      alert(err instanceof Error ? err.message : '硬重启失败');
     } finally {
       setRestarting(false);
     }
@@ -267,18 +283,27 @@ export default function CookiesPanel() {
               已托管的抓取 Cookie 文件
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              创建、更新和清理供抓取器使用的 Netscape 格式 Cookie 文件，走现有代理接口完成读写。
+              创建、更新和清理供抓取器使用的 Netscape 格式 Cookie 文件。文件内容本身会在下一轮抓取直接生效；只有改了
+              crawler 的 Cookie 路径或会话配置时，才需要热重载运行时。
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
+              onClick={handleReload}
+              disabled={reloading}
+              className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {reloading ? '热重载中...' : '热重载运行时'}
+            </button>
+            <button
+              type="button"
               onClick={handleRestart}
               disabled={restarting}
               className="rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {restarting ? '重启中...' : '重启服务'}
+              {restarting ? '重启中...' : '硬重启服务'}
             </button>
             {viewMode === 'list' ? (
               <button
