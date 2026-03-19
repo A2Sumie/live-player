@@ -52,6 +52,8 @@ export interface CrawlerConfig {
   processor_id?: string;
   engine?: string;
   sub_task_type?: string[];
+  hydrate_users?: string[];
+  hydrate_limit?: number;
   aggregation?: {
     cron?: string;
     prompt?: string;
@@ -499,6 +501,16 @@ export function analyzeConfig(config: AppConfig) {
         level: 'error',
         title: `${label} 解析到了不存在的 target`,
         detail: route.missingTargetIds.join(', '),
+      });
+    }
+
+    const aggregationProcessorId = crawler.cfg_crawler?.aggregation?.processor_id;
+    if (aggregationProcessorId && !processorIds.has(aggregationProcessorId)) {
+      issues.push({
+        id: `crawler-missing-aggregation-processor-${index}`,
+        level: 'error',
+        title: `${label} 的 aggregation 引用了不存在的 processor`,
+        detail: aggregationProcessorId,
       });
     }
   });

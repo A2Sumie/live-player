@@ -30,7 +30,7 @@ type ProcessorDef = {
 };
 
 type ConfigPayload = {
-  crawlers?: Array<{ name?: string; origin?: string }>;
+  crawlers?: Array<{ name?: string; origin?: string; websites?: string[]; paths?: string[] }>;
   processors?: ProcessorDef[];
 };
 
@@ -85,6 +85,16 @@ export default function OpsPanel() {
     processorUid: '',
     processorStart: '',
     processorEnd: '',
+    simulateCrawlerName: '',
+    simulateUid: '',
+    simulateUsername: '',
+    simulateArticleId: '',
+    simulateUrl: '',
+    simulateCreatedAt: '',
+    simulateContent: '',
+    simulateMediaUrls: '',
+    simulateProcess: true,
+    simulateForward: false,
   });
   const [processorResult, setProcessorResult] = useState<any>(null);
 
@@ -119,6 +129,8 @@ export default function OpsPanel() {
         crawlerName: prev.crawlerName || payload.crawlers?.[0]?.name || '',
         resendCrawlerName:
           prev.resendCrawlerName || payload.crawlers?.[0]?.name || '',
+        simulateCrawlerName:
+          prev.simulateCrawlerName || payload.crawlers?.[0]?.name || '',
         processorId:
           prev.processorId ||
           payload.processors?.[0]?.id ||
@@ -160,9 +172,9 @@ export default function OpsPanel() {
     return () => clearInterval(timer);
   }, []);
 
-  const resolveCrawlerPlatform = (origin?: string) => {
-    if (!origin) return null;
-    const normalized = origin.toLowerCase();
+  const resolveCrawlerPlatform = (origin?: string, websites?: string[]) => {
+    const normalized = (origin || websites?.[0] || '').toLowerCase();
+    if (!normalized) return null;
     if (normalized.includes('x.com') || normalized.includes('twitter.com')) return '1';
     if (normalized.includes('instagram.com')) return '2';
     if (normalized.includes('tiktok.com')) return '3';
@@ -170,11 +182,15 @@ export default function OpsPanel() {
     return '5';
   };
 
+  const resolveCrawlerByName = (crawlerName?: string) =>
+    (config?.crawlers || []).find((crawler) => crawler.name === crawlerName) || null;
+
   const resolveResendCrawlerName = (platform: number | string, preferredName?: string) => {
     const targetPlatform = String(platform);
     const compatible = (config?.crawlers || []).filter(
       (crawler) =>
-        crawler.name && resolveCrawlerPlatform(crawler.origin) === targetPlatform
+        crawler.name &&
+        resolveCrawlerPlatform(crawler.origin, crawler.websites) === targetPlatform
     );
     if (
       preferredName &&
@@ -243,6 +259,61 @@ export default function OpsPanel() {
       return;
     }
     setMessage(`已重发 ${article.a_id} -> ${crawlerName}`);
+    loadMeta();
+  };
+
+  const simulateArticle = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const crawler = resolveCrawlerByName(actionState.simulateCrawlerName);
+    const payload: Record<string, unknown> = {
+      crawlerName: actionState.simulateCrawlerName,
+      processWithCrawler: actionState.simulateProcess,
+      forwardAfterSave: actionState.simulateForward,
+      content: actionState.simulateContent,
+    };
+
+    if (actionState.simulateUid) payload.u_id = actionState.simulateUid;
+    if (actionState.simulateUsername) payload.username = actionState.simulateUsername;
+    if (actionState.simulateArticleId) payload.a_id = actionState.simulateArticleId;
+    if (actionState.simulateUrl) payload.url = actionState.simulateUrl;
+    if (actionState.simulateCreatedAt) payload.created_at = actionState.simulateCreatedAt;
+    if (actionState.simulateMediaUrls.trim()) {
+      payload.mediaUrls = actionState.simulateMediaUrls
+        .split('\n')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+
+    if (!payload.u_id && crawler?.paths?.[0]) {
+      payload.u_id = crawler.paths[0].replace(/^@+/, '');
+    }
+
+    const res = await fetch('/api/actions/articles/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = (await res.json().catch(() => null)) as any;
+    if (!res.ok) {
+      setMessage(`模拟抓取失败: ${data?.error || 'unknown error'}`);
+      return;
+    }
+
+    setMessage(
+      `已模拟抓取 ${data?.article?.a_id || actionState.simulateArticleId || 'new article'}${
+        data?.forwarded ? ' 并完成重发' : ''
+      }`
+    );
+    setActionState((prev) => ({
+      ...prev,
+      simulateArticleId: '',
+      simulateUrl: '',
+      simulateCreatedAt: '',
+      simulateContent: '',
+      simulateMediaUrls: '',
+    }));
+    searchArticles(true);
     loadMeta();
   };
 
@@ -533,6 +604,97 @@ export default function OpsPanel() {
           </section>
 
           <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-6">
+            <h3 className="text-2xl font-semibold text-white">Simulate Capture</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              伪造一条“刚刚被 crawler 抓到”的最新内容，用于测试 cookies、processor
+              和转发链路，不必等真实平台更新。
+            </p>
+            <form className="mt-5 space-y-4" onSubmit={simulateArticle}>
+              <SelectControl
+                label="crawler"
+                value={actionState.simulateCrawlerName}
+                onChange={(simulateCrawlerName) =>
+                  setActionState((prev) => ({ ...prev, simulateCrawlerName }))
+                }
+                options={crawlerOptions.map((value) => ({ value, label: value }))}
+              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <InputControl
+                  label="u_id"
+                  value={actionState.simulateUid}
+                  onChange={(simulateUid) =>
+                    setActionState((prev) => ({ ...prev, simulateUid }))
+                  }
+                />
+                <InputControl
+                  label="username"
+                  value={actionState.simulateUsername}
+                  onChange={(simulateUsername) =>
+                    setActionState((prev) => ({ ...prev, simulateUsername }))
+                  }
+                />
+                <InputControl
+                  label="article id (optional)"
+                  value={actionState.simulateArticleId}
+                  onChange={(simulateArticleId) =>
+                    setActionState((prev) => ({ ...prev, simulateArticleId }))
+                  }
+                />
+                <InputControl
+                  label="created_at (unix / ISO)"
+                  value={actionState.simulateCreatedAt}
+                  onChange={(simulateCreatedAt) =>
+                    setActionState((prev) => ({ ...prev, simulateCreatedAt }))
+                  }
+                />
+              </div>
+              <InputControl
+                label="url (optional)"
+                value={actionState.simulateUrl}
+                onChange={(simulateUrl) =>
+                  setActionState((prev) => ({ ...prev, simulateUrl }))
+                }
+              />
+              <TextAreaControl
+                label="content"
+                value={actionState.simulateContent}
+                onChange={(simulateContent) =>
+                  setActionState((prev) => ({ ...prev, simulateContent }))
+                }
+              />
+              <TextAreaControl
+                label="media urls (one per line)"
+                value={actionState.simulateMediaUrls}
+                onChange={(simulateMediaUrls) =>
+                  setActionState((prev) => ({ ...prev, simulateMediaUrls }))
+                }
+              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <CheckboxControl
+                  label="保存后执行 crawler 处理器"
+                  checked={actionState.simulateProcess}
+                  onChange={(simulateProcess) =>
+                    setActionState((prev) => ({ ...prev, simulateProcess }))
+                  }
+                />
+                <CheckboxControl
+                  label="保存后立即按该 crawler 重发"
+                  checked={actionState.simulateForward}
+                  onChange={(simulateForward) =>
+                    setActionState((prev) => ({ ...prev, simulateForward }))
+                  }
+                />
+              </div>
+              <button
+                type="submit"
+                className="rounded-full bg-amber-300 px-4 py-2 text-sm font-medium text-slate-950"
+              >
+                模拟最新抓取
+              </button>
+            </form>
+          </section>
+
+          <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-6">
             <h3 className="text-xl font-semibold text-white">Tasks</h3>
             <div className="mt-4 space-y-3">
               {tasks.map((task) => (
@@ -658,6 +820,28 @@ function SelectControl({
           );
         })}
       </select>
+    </label>
+  );
+}
+
+function CheckboxControl({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-200">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="accent-cyan-400"
+      />
+      {label}
     </label>
   );
 }

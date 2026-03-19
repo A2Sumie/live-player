@@ -19,6 +19,7 @@ type CookieDetail = {
 type CrawlerSummary = {
   name: string;
   cookieFile: string | null;
+  sessionProfile: string | null;
 };
 
 export default function CookiesPanel() {
@@ -34,6 +35,7 @@ export default function CookiesPanel() {
   const [selectedCookies, setSelectedCookies] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [syncingCrawlerName, setSyncingCrawlerName] = useState<string | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -226,6 +228,33 @@ export default function CookiesPanel() {
     }
   };
 
+  const handleSyncCrawlerCookies = async (crawlerName: string) => {
+    setSyncingCrawlerName(crawlerName);
+    try {
+      const res = await fetch('/api/cookies/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crawlerName }),
+      });
+
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      const data = await res.json() as {
+        count: number;
+        cookieFile: string;
+        sessionProfile: string | null;
+      };
+      await fetchData();
+      alert(`已从会话回写 ${data.count} 条 cookies 到 ${data.cookieFile}${data.sessionProfile ? `\n会话: ${data.sessionProfile}` : ''}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '回写 Cookie 失败');
+    } finally {
+      setSyncingCrawlerName(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -365,19 +394,37 @@ export default function CookiesPanel() {
                       />
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-col gap-2">
                       {usedBy.length === 0 ? (
                         <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
                           未使用
                         </span>
                       ) : (
                         usedBy.map((crawler) => (
-                          <span
+                          <div
                             key={crawler.name}
-                            className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-100"
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100"
                           >
-                            {crawler.name}
-                          </span>
+                            <div className="min-w-0">
+                              <div className="truncate">{crawler.name}</div>
+                              {crawler.sessionProfile && (
+                                <div className="mt-1 font-mono text-[11px] text-emerald-200/80">
+                                  session: {crawler.sessionProfile}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleSyncCrawlerCookies(crawler.name);
+                              }}
+                              disabled={syncingCrawlerName === crawler.name}
+                              className="shrink-0 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {syncingCrawlerName === crawler.name ? '回写中...' : '从会话回写'}
+                            </button>
+                          </div>
                         ))
                       )}
                     </div>
