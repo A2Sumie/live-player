@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import AdminControls from '@/components/AdminControls';
 import AddPlayerButton from '@/components/AddPlayerButton';
 import PlayerCard from '@/components/PlayerCard';
@@ -93,14 +92,7 @@ export default function Home() {
       });
 
       if (response.ok) {
-        const savedPlayer = await response.json() as Player;
-
-        if (isEditing) {
-          setPlayers(prev => prev.map(p => p.id === editingPlayer.id ? savedPlayer : p));
-        } else {
-          setPlayers(prev => [savedPlayer, ...prev]);
-        }
-
+        await fetchPlayers();
         setModalOpen(false);
         setEditingPlayer(null);
       } else {

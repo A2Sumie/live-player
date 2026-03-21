@@ -3,6 +3,8 @@ import { getDb, players } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { serializeStreamConfig } from '@/lib/stream-config';
+import { getPlayerViewByPid, invalidatePlayerCaches, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +19,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pid
 
         const player = await cache.getOrFetch(
             CACHE_KEYS.PLAYER(pId),
-            async () => {
-                const db = getDb();
-                const [result] = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
-                return result || null;
-            },
+            async () => getPlayerViewByPid(pId),
             CACHE_TTL.PLAYER
         );
 
@@ -56,35 +54,61 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
         }
 
         const body = await request.json() as any;
+        const runtimeUpdate: Record<string, string | null> = {};
+        const baseUpdate: Record<string, string | null> = {};
 
-        // Allowed fields to patch
-        const updateData: any = {};
-        if (body.url !== undefined) updateData.url = body.url;
-        if (body.description !== undefined) updateData.description = body.description;
-        if (body.name !== undefined) updateData.name = body.name;
-        if (body.streamConfig !== undefined) updateData.streamConfig = body.streamConfig ? JSON.stringify(body.streamConfig) : null;
-        if (body.coverUrl !== undefined) updateData.coverUrl = body.coverUrl;
-        if (body.announcement !== undefined) updateData.announcement = body.announcement;
+        if (body.url !== undefined) runtimeUpdate.url = body.url ?? null;
+        if (body.description !== undefined) runtimeUpdate.description = body.description ?? null;
+        if (body.name !== undefined) runtimeUpdate.name = body.name ?? null;
+        if (body.streamConfig !== undefined) {
+            try {
+                runtimeUpdate.streamConfig = serializeStreamConfig(body.streamConfig);
+            } catch (error) {
+                return NextResponse.json(
+                    { error: error instanceof Error ? error.message : 'Invalid streamConfig' },
+                    { status: 400 }
+                );
+            }
+        }
+        if (body.coverUrl !== undefined) runtimeUpdate.coverUrl = body.coverUrl ?? null;
+        if (body.status !== undefined) runtimeUpdate.status = body.status ?? 'idle';
+        if (body.runtimeStatus !== undefined) runtimeUpdate.status = body.runtimeStatus ?? 'idle';
+        if (body.lastError !== undefined) runtimeUpdate.lastError = body.lastError ?? null;
+        if (body.lastSeenAt !== undefined) runtimeUpdate.lastSeenAt = body.lastSeenAt ?? null;
+        if (body.announcement !== undefined) baseUpdate.announcement = body.announcement ?? null;
 
-        if (Object.keys(updateData).length === 0) {
+        if (Object.keys(runtimeUpdate).length === 0 && Object.keys(baseUpdate).length === 0) {
             return NextResponse.json({ error: 'No valid fields provided for update' }, { status: 400 });
         }
 
-        updateData.updatedAt = new Date().toISOString();
-
         const db = getDb();
-        const [updatedPlayer] = await db.update(players)
-            .set(updateData)
-            .where(eq(players.pId, pId))
-            .returning();
-
-        if (!updatedPlayer) {
+        const existingPlayer = await getPlayerViewByPid(pId, db);
+        if (!existingPlayer) {
             return NextResponse.json({ error: 'Player not found' }, { status: 404 });
         }
 
-        cache.delete(CACHE_KEYS.PLAYER_LIST);
-        cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
-        cache.delete(CACHE_KEYS.PLAYER(pId));
+        if (Object.keys(baseUpdate).length > 0) {
+            await db.update(players)
+                .set({
+                    ...baseUpdate,
+                    updatedAt: new Date().toISOString(),
+                })
+                .where(eq(players.pId, pId));
+        }
+
+        if (Object.keys(runtimeUpdate).length > 0) {
+            const updatedRuntimePlayer = await upsertPlayerRuntimeByPid(pId, runtimeUpdate, db);
+            if (!updatedRuntimePlayer) {
+                return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+            }
+        }
+
+        invalidatePlayerCaches(pId);
+
+        const updatedPlayer = await getPlayerViewByPid(pId, db);
+        if (!updatedPlayer) {
+            return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+        }
 
         const { coverImage, ...playerWithoutImage } = updatedPlayer;
         return NextResponse.json(playerWithoutImage);

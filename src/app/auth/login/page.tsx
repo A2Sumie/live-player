@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <LoginForm
-      redirectPath={normalizeInternalRedirectPath(redirectValue, '/cic')}
+      redirectPath={normalizeInternalRedirectPath(redirectValue, '/')}
     />
   );
 }

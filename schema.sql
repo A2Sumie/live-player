@@ -17,6 +17,21 @@ CREATE TABLE IF NOT EXISTS players (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS player_runtime (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL UNIQUE,
+    name TEXT,
+    description TEXT,
+    url TEXT,
+    cover_url TEXT,
+    stream_config TEXT,
+    status TEXT NOT NULL DEFAULT 'idle',
+    last_error TEXT,
+    last_seen_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 管理员表
 CREATE TABLE IF NOT EXISTS admins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

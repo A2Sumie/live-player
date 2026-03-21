@@ -68,6 +68,12 @@ export default function CICNav({
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20"
+            >
+              返回主页
+            </Link>
             <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-400">
                 当前会话

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, players } from '@/lib/db';
+import { getDb, playerRuntime, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { eq, and, ne } from 'drizzle-orm';
-import { cache, CACHE_KEYS } from '@/lib/cache';
+import { serializeStreamConfig } from '@/lib/stream-config';
+import { getPlayerRuntimeRecordById, invalidatePlayerCaches } from '@/lib/player-runtime';
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -14,14 +15,26 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     }
 
     const db = getDb();
-    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
+    const record = await getPlayerRuntimeRecordById(playerId, db);
 
-    if (!player) {
+    if (!record) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
+    const { player, runtime } = record;
     const { coverImage, ...playerWithoutImage } = player;
-    return NextResponse.json(playerWithoutImage);
+    return NextResponse.json({
+      ...playerWithoutImage,
+      runtimeName: runtime?.name ?? null,
+      runtimeDescription: runtime?.description ?? null,
+      runtimeUrl: runtime?.url ?? null,
+      runtimeCoverUrl: runtime?.coverUrl ?? null,
+      runtimeStreamConfig: runtime?.streamConfig ?? null,
+      runtimeStatus: runtime?.status ?? null,
+      runtimeLastError: runtime?.lastError ?? null,
+      runtimeLastSeenAt: runtime?.lastSeenAt ?? null,
+      runtimeUpdatedAt: runtime?.updatedAt ?? null,
+    });
   } catch (error) {
     console.error('Error fetching player:', error);
     return NextResponse.json({ error: 'Failed to fetch player' }, { status: 500 });
@@ -57,7 +70,22 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       );
     }
 
+    let serializedStreamConfig: string | null = null;
+    try {
+      serializedStreamConfig = serializeStreamConfig(streamConfig);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid streamConfig' },
+        { status: 400 }
+      );
+    }
+
     const db = getDb();
+
+    const currentRecord = await getPlayerRuntimeRecordById(playerId, db);
+    if (!currentRecord) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
 
     // Check if another player with the same pId exists (excluding current player)
     const existingPlayer = await db.select()
@@ -80,16 +108,14 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         url,
         coverUrl: coverUrl || null,
         announcement: announcement || null,
-        streamConfig: streamConfig ? JSON.stringify(streamConfig) : null,
+        streamConfig: serializedStreamConfig,
         sources: sources ? sources : null, // Assuming JSON input
         updatedAt: new Date().toISOString()
       })
       .where(eq(players.id, playerId))
       .returning();
 
-    cache.delete(CACHE_KEYS.PLAYER_LIST);
-    cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
-    cache.delete(CACHE_KEYS.PLAYER(pId));
+    invalidatePlayerCaches(currentRecord.player.pId, pId);
     // Convert binary coverImage to array for JSON serialization
     // [MODIFIED] Exclude coverImage to save bandwidth
     const { coverImage: _ignored, ...playerWithoutImage } = player;
@@ -128,14 +154,13 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 
     const db = getDb();
 
-    const [existingPlayer] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
+    const existingRecord = await getPlayerRuntimeRecordById(playerId, db);
 
+    await db.delete(playerRuntime).where(eq(playerRuntime.playerId, playerId));
     await db.delete(players).where(eq(players.id, playerId));
 
-    if (existingPlayer) {
-      cache.delete(CACHE_KEYS.PLAYER_LIST);
-      cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
-      cache.delete(CACHE_KEYS.PLAYER(existingPlayer.pId));
+    if (existingRecord) {
+      invalidatePlayerCaches(existingRecord.player.pId);
     }
 
     return NextResponse.json({ message: 'Player deleted successfully' });
