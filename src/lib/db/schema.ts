@@ -17,6 +17,21 @@ export const players = sqliteTable('players', {
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const playerRuntime = sqliteTable('player_runtime', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  playerId: integer('player_id').notNull().unique(),
+  name: text('name'),
+  description: text('description'),
+  url: text('url'),
+  coverUrl: text('cover_url'),
+  streamConfig: text('stream_config'),
+  status: text('status').notNull().default('idle'),
+  lastError: text('last_error'),
+  lastSeenAt: text('last_seen_at'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const admins = sqliteTable('admins', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   username: text('username').notNull().unique(),
@@ -56,6 +71,9 @@ export const systemLogs = sqliteTable('system_logs', {
 export type Player = typeof players.$inferSelect;
 export type NewPlayer = typeof players.$inferInsert;
 export type PlayerWithBase64Image = Player & { coverImageBase64: string | null };
+
+export type PlayerRuntime = typeof playerRuntime.$inferSelect;
+export type NewPlayerRuntime = typeof playerRuntime.$inferInsert;
 
 export type Admin = typeof admins.$inferSelect;
 export type NewAdmin = typeof admins.$inferInsert;

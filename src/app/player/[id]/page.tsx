@@ -1,28 +1,21 @@
 import { notFound } from 'next/navigation';
-import { getDb, players, type Player } from '@/lib/db';
-
-import { eq } from 'drizzle-orm';
-
 import PlayerWrapper from '@/components/PlayerWrapper';
 import { cache as memoryCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { cache } from 'react';
 import { logger } from '@/lib/logger';
 import { signStreamUrl } from '@/lib/stream-auth';
+import { getPlayerViewByPid, type PlayerView } from '@/lib/player-runtime';
 
 interface PlayerPageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-const getPlayer = cache(async (pId: string): Promise<Player | null> => {
+const getPlayer = cache(async (pId: string): Promise<PlayerView | null> => {
   try {
     const player = await memoryCache.getOrFetch(
       CACHE_KEYS.PLAYER(pId),
-      async () => {
-        const db = getDb();
-        const [player] = await db.select().from(players).where(eq(players.pId, pId)).limit(1);
-        return player || null;
-      },
+      async () => getPlayerViewByPid(pId),
       CACHE_TTL.PLAYER
     );
 

@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
-import { cache, CACHE_KEYS } from '@/lib/cache';
+import { serializeStreamConfig } from '@/lib/stream-config';
+import { invalidatePlayerCaches, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
     try {
@@ -53,23 +54,42 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         const updates: any = {
             updatedAt: new Date().toISOString()
         };
+        let runtimePresentation: Record<string, string | null> | null = null;
 
         if (action === 'stop') {
             // Clear Config
             updates.streamConfig = "{}"; // Empty JSON Object
+            runtimePresentation = {
+                url: 'http://offline',
+                description: '信号等待中... | 手动停止',
+                name: null,
+                coverUrl: null,
+                status: 'idle',
+                streamConfig: null,
+            };
             console.log(`[API] Stopping Relay for Player ${targetPlayer.name} (${playerId})`);
         }
         else if (action === 'start' || action === 'sync') {
             if (!streamConfig) {
                 return NextResponse.json({ error: 'streamConfig required for start/sync' }, { status: 400 });
             }
-            updates.streamConfig = JSON.stringify(streamConfig);
+            try {
+                updates.streamConfig = serializeStreamConfig(streamConfig);
+            } catch (error) {
+                return NextResponse.json(
+                    { error: error instanceof Error ? error.message : 'Invalid streamConfig' },
+                    { status: 400 }
+                );
+            }
 
             // Optional Metadata Sync
             if (metadata) {
-                if (metadata.title) updates.name = metadata.title; // Update Player Name? Maybe risky if auto?
-                // Let's only update non-critical info or description
-                if (metadata.coverUrl) updates.coverUrl = metadata.coverUrl;
+                runtimePresentation = {
+                    name: metadata.title || null,
+                    coverUrl: metadata.coverUrl || null,
+                    description: metadata.description || null,
+                    status: 'live',
+                };
             }
             console.log(`[API] Syncing/Starting Relay for Player ${targetPlayer.name} (${playerId})`);
         } else {
@@ -82,9 +102,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
             .where(eq(players.id, playerId))
             .returning();
 
-        // Cache Invalidation
-        cache.delete(CACHE_KEYS.PLAYER_LIST);
-        cache.delete(CACHE_KEYS.PLAYER(targetPlayer.pId));
+        if (runtimePresentation) {
+            await upsertPlayerRuntimeByPid(targetPlayer.pId, runtimePresentation, db);
+        }
+
+        invalidatePlayerCaches(targetPlayer.pId);
 
         return NextResponse.json({
             success: true,

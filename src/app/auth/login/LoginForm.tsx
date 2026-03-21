@@ -51,6 +51,9 @@ export default function LoginForm({
               返回首页
             </Link>
           </p>
+          <p className="mt-2 text-center text-xs text-gray-500">
+            直接打开登录页时，登录后会回到主页；如果是从受保护页面跳转过来，会自动返回原页面。
+          </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="-space-y-px rounded-md shadow-sm">

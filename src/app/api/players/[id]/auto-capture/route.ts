@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
+import { getPlayerRuntimeRecordById, invalidatePlayerCaches, mergePlayerWithRuntime } from '@/lib/player-runtime';
 
 async function captureVideoFrame(hlsUrl: string): Promise<Uint8Array> {
   try {
@@ -99,15 +100,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const db = getDb();
     
-    // Get the player to access the URL
-    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1);
-
-    if (!player) {
+    const record = await getPlayerRuntimeRecordById(playerId, db);
+    if (!record) {
       return NextResponse.json(
         { error: 'Player not found' },
         { status: 404 }
       );
     }
+
+    const player = mergePlayerWithRuntime(record.player, record.runtime);
 
     if (!player.url) {
       return NextResponse.json(
@@ -128,6 +129,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         })
         .where(eq(players.id, playerId))
         .returning();
+
+      invalidatePlayerCaches(player.pId);
 
       return NextResponse.json({ 
         message: 'Cover image auto-captured successfully',

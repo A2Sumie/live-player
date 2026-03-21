@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
+import { serializeStreamConfig } from '@/lib/stream-config';
+import { invalidatePlayerCaches, listPlayerViews } from '@/lib/player-runtime';
 
 export async function GET() {
   try {
     const playerList = await cache.getOrFetch(
       CACHE_KEYS.PLAYER_LIST,
-      async () => {
-        const db = getDb();
-        return await db.select().from(players).orderBy(desc(players.updatedAt));
-      },
+      async () => listPlayerViews(),
       CACHE_TTL.PLAYER_LIST
     );
 
@@ -52,6 +51,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let serializedStreamConfig: string | null = null;
+    try {
+      serializedStreamConfig = serializeStreamConfig(streamConfig);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid streamConfig' },
+        { status: 400 }
+      );
+    }
+
     const db = getDb();
 
     // Check if player with pId already exists
@@ -72,9 +81,11 @@ export async function POST(request: NextRequest) {
       coverUrl: coverUrl || null,
       announcement: announcement || null,
       createdBy: user.id || null, // Assuming user object has id
-      streamConfig: streamConfig ? JSON.stringify(streamConfig) : null,
+      streamConfig: serializedStreamConfig,
       updatedAt: new Date().toISOString()
     }).returning();
+
+    invalidatePlayerCaches(pId);
 
     // Convert binary coverImage to array for JSON serialization
     const playerWithArrayImage = {
