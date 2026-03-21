@@ -258,6 +258,19 @@ async function buildPageLevelDRM(tabId, pageUrl) {
     const licenses = detectedLicenses[tabId] || [];
     const keys = detectedKeys[tabId] || [];
 
+    let primaryStream = null;
+    for (const stream of streams) {
+        const mediaInfo = stream.mediaInfo || {};
+        const variantsCount = mediaInfo.variants_count || (Array.isArray(mediaInfo.variants) ? mediaInfo.variants.length : 0);
+        if ((stream.url && stream.url.includes('playlist')) || variantsCount > 0) {
+            primaryStream = stream;
+            break;
+        }
+    }
+    if (!primaryStream && streams.length > 0) {
+        primaryStream = streams[0];
+    }
+
     // Get all cookies for this page
     const cookies = await chrome.cookies.getAll({ url: pageUrl });
     const cookieDict = {};
@@ -274,6 +287,8 @@ async function buildPageLevelDRM(tabId, pageUrl) {
         mode: 'echo',
         page_url: pageUrl,
         timestamp: Date.now(),
+        source: primaryStream ? primaryStream.url : '',
+        headers: primaryStream ? { ...primaryStream.headers } : {},
         cookies_b64: cookies_b64,
         streams_detected: streams.length,
         streams: streams.map(s => ({
