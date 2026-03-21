@@ -29,14 +29,22 @@
     .status { font-size: 12px; color: #666; text-align: right; }
     #openDashboard { background: #6f42c1; }
     #openDashboard:hover { background: #5a32a3; }
+    .secondary { background: #0d6efd; }
+    .secondary:hover { background: #0b5ed7; }
+    .tertiary { background: #198754; }
+    .tertiary:hover { background: #157347; }
+    .muted { background: #6c757d; }
+    .muted:hover { background: #5c636a; }
   </style>
 </head>
 <body>
   <h2>Relay Dashboard</h2>
   <button id="openDashboard">🖥️ Open tv.n2nj.moe</button>
 
-  <h2>Echo Config Capturer</h2>
-  <button id="capture">Force Page Headers</button>
+  <h2>Relay Package</h2>
+  <button id="copyRelayPackage" class="secondary">Copy Full Relay Package</button>
+  <button id="sendRelay" class="tertiary">Send To Relay Channel</button>
+  <button id="capture" class="muted">Force Page Headers</button>
   <textarea id="output" placeholder="Result will appear here..."></textarea>
   <div class="status" id="status"></div>
   <script type="module" src="popup.js"></script>
