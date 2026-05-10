@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# local Cloudflare/Wrangler state
+.wrangler/
+
 # next.js
 /.next/
 /out/
@@ -51,6 +54,8 @@ setup-secrets.sh
 
 # ignored security files
 streamserv.zip
+*.zip
+*.crx
 
 # Extension Sensitive Data
 extension/wasm/
