@@ -192,18 +192,6 @@ function _Artplayer({
         },
       },
       controls: [
-
-
-        ...(isTwentyTwoSevenPid(player?.pId) ? [{
-          name: 'realtime-subtitle-toggle',
-          index: 19,
-          position: 'right' as const,
-          html: '<span style="font-size:12px;font-weight:700;line-height:1;">字幕</span>',
-          tooltip: '开关实时字幕',
-          click: function (this: Artplayer) {
-            window.dispatchEvent(new CustomEvent('n2nj:toggle-realtime-subtitles'));
-          },
-        }] : []),
         {
           name: 'pip',
           index: 20,
@@ -1403,14 +1391,14 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const subtitleOverlayNode = showSubtitleOverlay && showSubtitleText ? (
     <div
       className={`n2nj-realtime-subtitle-overlay pointer-events-none absolute inset-x-2 z-20 flex justify-center sm:inset-x-6 ${
-        isPortraitViewport ? 'bottom-2' : 'bottom-14 sm:bottom-16'
+        isPortraitViewport ? 'top-[calc(min(100vw,100vh*16/9)*9/16+0.75rem)] bottom-auto' : 'bottom-14 sm:bottom-16'
       }`}
       style={{ opacity: subtitleOpacity }}
     >
       <div
         className={`n2nj-realtime-subtitle-box w-full overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm sm:px-4 ${
           isPortraitViewport
-            ? 'max-h-[42vh] max-w-[min(98%,720px)] [overflow-wrap:anywhere] [word-break:normal]'
+            ? 'max-h-[calc(100%-min(100vw,100vh*16/9)*9/16-1.5rem)] max-w-[min(98%,720px)] [overflow-wrap:anywhere] [word-break:normal]'
             : 'max-h-[34vh] max-w-[min(96%,1080px)] [overflow-wrap:anywhere] [word-break:keep-all]'
         }`}
         style={{ fontSize: `${subtitleScale}rem` }}
@@ -1418,7 +1406,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         {subtitleOverlayRows.map((row, rowIndex) => (
           <div
             key={row.key}
-            className={`realtime-subtitle-roll min-h-[1.35em] text-left ${isPortraitViewport ? 'realtime-subtitle-roll--wrap' : ''} ${rowIndex > 0 ? 'mt-1' : ''}`}
+            className={`realtime-subtitle-roll text-left ${isPortraitViewport ? 'realtime-subtitle-roll--wrap min-h-[1.35em]' : 'min-h-[1.35em]'} ${rowIndex > 0 ? (isPortraitViewport ? 'mt-1.5' : 'mt-1') : ''}`}
             lang={row.lang}
           >
             <div className="realtime-subtitle-roll-track">
@@ -1592,7 +1580,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               style={{ minHeight: '400px' }}
             />
 
-            {realtimeEnabled && (
+            {realtimeEnabled && !isPortraitViewport && (
               <button
                 type="button"
                 onClick={toggleRealtimeSubtitles}
@@ -1603,8 +1591,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               </button>
             )}
 
-            {!artSubtitleLayerHost && subtitleOverlayNode}
-            {artSubtitleLayerHost && subtitleOverlayNode ? createPortal(subtitleOverlayNode, artSubtitleLayerHost) : null}
+            {(!artSubtitleLayerHost || isPortraitViewport) && subtitleOverlayNode}
+            {!isPortraitViewport && artSubtitleLayerHost && subtitleOverlayNode ? createPortal(subtitleOverlayNode, artSubtitleLayerHost) : null}
 
             {(realtimeEnabled || debug) && (
               <div className="absolute right-3 top-3 z-30 max-w-[calc(100%-1.5rem)] text-xs text-white">
