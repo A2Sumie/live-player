@@ -750,7 +750,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const subtitleTextPieces = buildSubtitleTextPieces(
     realtimeSegments,
     activeRealtimeSegment,
-    !realtimeTextWindow.usedTimeline,
+    !realtimeTextWindow.usedTimeline || !activeRealtimeSegment,
   );
   const showSubtitleText = Boolean(
     subtitleTextPieces.some(({ segment }) => (
