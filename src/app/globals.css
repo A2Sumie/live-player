@@ -59,3 +59,18 @@ body {
     transform: translateX(min(0px, calc(100cqw - 100%)));
   }
 }
+
+.realtime-subtitle-roll--wrap {
+  white-space: normal;
+}
+
+.realtime-subtitle-roll--wrap .realtime-subtitle-roll-track {
+  display: block;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  padding-inline: 0;
+  transform: none;
+  animation: none;
+  will-change: auto;
+}

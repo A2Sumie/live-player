@@ -48,18 +48,16 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     onDelete?.(player);
   };
 
-  const openPlayerPreset = (e: React.MouseEvent, preset: 'aligned' | 'low') => {
+  const openPlayerPreset = (e: React.MouseEvent, preset: 'bilingual' | 'source' | 'low') => {
     e.preventDefault();
     e.stopPropagation();
     const pid = encodeURIComponent(player.pId);
-    window.location.href = preset === 'low'
-      ? `/player/${pid}?preset=low`
-      : `/player/${pid}?preset=aligned`;
+    window.location.href = `/player/${pid}?preset=${preset}`;
   };
 
   return (
     <div className="group relative">
-      <Link href={`/player/${player.pId}`} className="block">
+      <Link href={`/player/${player.pId}${isTwentyTwoSeven ? '?preset=low' : ''}`} className="block">
         <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/26 shadow-lg shadow-slate-900/12 backdrop-blur-lg transition-shadow duration-300 hover:shadow-xl dark:border-white/10 dark:bg-slate-900/70">
           {isTwentyTwoSeven && (
             <div className="absolute left-3 top-3 z-10 rounded-full border border-cyan-200/80 bg-white/90 px-2.5 py-1 text-xs font-semibold text-cyan-700 shadow-sm">
@@ -117,20 +115,27 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
               </div>
             )}
             {isTwentyTwoSeven && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={(event) => openPlayerPreset(event, 'aligned')}
-                  className="rounded border border-cyan-200/80 bg-cyan-50/82 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100/90"
-                >
-                  字幕对齐
-                </button>
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={(event) => openPlayerPreset(event, 'low')}
-                  className="rounded border border-slate-300/80 bg-white/72 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white/90"
+                  className="rounded border border-slate-300/80 bg-white/72 px-2 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-white/90"
                 >
-                  最低延迟
+                  生肉
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => openPlayerPreset(event, 'source')}
+                  className="rounded border border-cyan-200/80 bg-cyan-50/82 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100/90"
+                >
+                  日字
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => openPlayerPreset(event, 'bilingual')}
+                  className="rounded border border-emerald-200/80 bg-emerald-50/82 px-2 py-1.5 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100/90"
+                >
+                  中日
                 </button>
               </div>
             )}

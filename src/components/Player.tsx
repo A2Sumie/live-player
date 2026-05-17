@@ -347,6 +347,8 @@ type PlaybackTimecode = {
 type VideoLatencyMode = 'aligned' | 'low';
 
 const PLAYBACK_SEEK_THRESHOLD_SECONDS = 1.4;
+const PLAYBACK_RETUNE_INTERVAL_MS = 5000;
+const PLAYBACK_RETUNE_AFTER_RELOAD_MS = 5500;
 const REALTIME_SETTINGS_VERSION = 3;
 
 type StoredRealtimeSettings = {
@@ -666,10 +668,10 @@ function tunePlaybackLatency(
   mode: VideoLatencyMode,
   timecode: PlaybackTimecode,
   targetDelaySeconds: number,
-) {
+): boolean {
   const video = (art as any)?.video as HTMLVideoElement | undefined;
   if (!video) {
-    return;
+    return false;
   }
 
   if (video.playbackRate !== 1) {
@@ -677,30 +679,32 @@ function tunePlaybackLatency(
   }
 
   if (timecode.latencyMs === null) {
-    return;
+    return false;
   }
 
   if (mode === 'low') {
-    return;
+    return false;
   }
 
   const targetLatencySeconds = Math.max(0, targetDelaySeconds);
   const currentLatencySeconds = timecode.latencyMs / 1000;
   const driftSeconds = currentLatencySeconds - targetLatencySeconds;
   if (Math.abs(driftSeconds) < PLAYBACK_SEEK_THRESHOLD_SECONDS || timecode.currentTime === null) {
-    return;
+    return false;
   }
 
   const seekable = video.seekable;
   if (!seekable.length) {
-    return;
+    return false;
   }
   const seekableStart = seekable.start(0);
   const seekableEnd = seekable.end(seekable.length - 1);
   const wantedTime = Math.min(seekableEnd - 0.15, Math.max(seekableStart, timecode.currentTime + driftSeconds));
   if (Number.isFinite(wantedTime) && Math.abs(wantedTime - video.currentTime) >= 0.75) {
     video.currentTime = wantedTime;
+    return true;
   }
+  return false;
 }
 
 function clampUiNumber(value: unknown, fallback: number, min: number, max: number) {
@@ -724,18 +728,10 @@ function reloadHlsForLatencyMode(art: Artplayer | null, mode: VideoLatencyMode) 
   }
 }
 
-function persistVideoLatencyMode(mode: VideoLatencyMode) {
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem('n2nj:realtime-video-mode', mode);
-  }
-}
-
-function retunePlaybackLatency(art: Artplayer | null, targetDelaySeconds: number) {
-  tunePlaybackLatency(art, 'aligned', readPlaybackTimecode(art), targetDelaySeconds);
-}
-
 export default function PlayerComponent({ player, debug = false }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
+  const lastPlaybackRetuneAtRef = useRef(0);
+  const playbackRetuneBlockedUntilRef = useRef(0);
   const router = useRouter();
   const { user } = useAuth();
   const [displayName, setDisplayName] = useState(player.name);
@@ -877,8 +873,13 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   // We can't easily pass it there via option unless we modify the callback
   // But we use a ref or closure.
 
+  const reloadPlayerForLatencyMode = useCallback((mode: VideoLatencyMode) => {
+    lastPlaybackRetuneAtRef.current = Date.now();
+    playbackRetuneBlockedUntilRef.current = Date.now() + PLAYBACK_RETUNE_AFTER_RELOAD_MS;
+    reloadHlsForLatencyMode(artPlayerRef.current, mode);
+  }, []);
+
   const applySubtitlePreset = useCallback((closeControls = true) => {
-    const previousMode = videoLatencyMode;
     setVideoLatencyMode('aligned');
     setTranscriptOpen(false);
     setShowTranslationText(false);
@@ -887,20 +888,13 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
     setSubtitleOpacity((value) => Math.max(value, isPortraitViewport ? 0.86 : 0.78));
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
-    if (previousMode === 'low') {
-      persistVideoLatencyMode('aligned');
-    }
-    window.setTimeout(() => retunePlaybackLatency(
-      artPlayerRef.current,
-      realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS,
-    ), 0);
+    reloadPlayerForLatencyMode('aligned');
     if (closeControls) {
       setRealtimeControlsOpen(false);
     }
-  }, [isPortraitViewport, realtimeConfig.videoDelaySeconds, videoLatencyMode]);
+  }, [isPortraitViewport, realtimeConfig.videoDelaySeconds, reloadPlayerForLatencyMode]);
 
   const applyStableBilingualPreset = useCallback((closeControls = true) => {
-    const previousMode = videoLatencyMode;
     setVideoLatencyMode('aligned');
     setShowTranslationText(true);
     setShowSourceText(true);
@@ -908,14 +902,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setTranscriptOpen(false);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setVideoDelaySeconds(DEFAULT_STABLE_VIDEO_DELAY_SECONDS);
-    if (previousMode === 'low') {
-      persistVideoLatencyMode('aligned');
-    }
-    window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, DEFAULT_STABLE_VIDEO_DELAY_SECONDS), 0);
+    reloadPlayerForLatencyMode('aligned');
     if (closeControls) {
       setRealtimeControlsOpen(false);
     }
-  }, [videoLatencyMode]);
+  }, [reloadPlayerForLatencyMode]);
 
   const applyLowLatencyPreset = useCallback((closeControls = true) => {
     setVideoLatencyMode('low');
@@ -925,7 +916,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setTranscriptOpen(false);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setVideoDelaySeconds(0);
-    reloadHlsForLatencyMode(artPlayerRef.current, 'low');
+    reloadPlayerForLatencyMode('low');
     if (closeControls) {
       setRealtimeControlsOpen(false);
     }
@@ -1035,7 +1026,12 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
       setNowJst(new Date());
       setPlaybackTimecode(nextPlaybackTimecode);
       if (videoLatencyMode === 'aligned') {
-        tunePlaybackLatency(art, videoLatencyMode, nextPlaybackTimecode, videoDelaySeconds);
+        const currentTime = Date.now();
+        const canRetune = currentTime >= playbackRetuneBlockedUntilRef.current
+          && currentTime - lastPlaybackRetuneAtRef.current >= PLAYBACK_RETUNE_INTERVAL_MS;
+        if (canRetune && tunePlaybackLatency(art, videoLatencyMode, nextPlaybackTimecode, videoDelaySeconds)) {
+          lastPlaybackRetuneAtRef.current = currentTime;
+        }
       }
     }, 500);
     return () => window.clearInterval(timer);
@@ -1092,14 +1088,14 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         } else if (stored.videoLatencyMode === 'aligned' || stored.videoLatencyMode === 'normal') {
           setVideoLatencyMode('aligned');
         }
-      } else if (preset !== 'aligned' && preset !== 'low' && latency !== 'low' && subtitle !== 'off' && subtitle !== 'on') {
-        setVideoLatencyMode('aligned');
+      } else if (preset !== 'aligned' && preset !== 'source' && preset !== 'bilingual' && preset !== 'low' && latency !== 'low' && subtitle !== 'off' && subtitle !== 'on') {
+        setVideoLatencyMode('low');
         setTranscriptOpen(false);
-        setShowSourceText(true);
-        setShowTranslationText(true);
+        setShowSourceText(false);
+        setShowTranslationText(false);
         setShowTiming(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+        setVideoDelaySeconds(0);
       }
       if (preset === 'low' || latency === 'low' || subtitle === 'off') {
         setVideoLatencyMode('low');
@@ -1109,14 +1105,22 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
         setVideoDelaySeconds(0);
-      } else if (preset === 'aligned' || subtitle === 'on') {
+      } else if (preset === 'source') {
+        setVideoLatencyMode('aligned');
+        setShowTranslationText(false);
+        setShowSourceText(true);
+        setShowTiming(false);
+        setTranscriptOpen(false);
+        setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
+        setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+      } else if (preset === 'bilingual' || preset === 'aligned' || subtitle === 'on') {
         setVideoLatencyMode('aligned');
         setShowTranslationText(true);
         setShowSourceText(true);
-        setShowTiming(true);
+        setShowTiming(false);
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+        setVideoDelaySeconds(preset === 'bilingual' ? DEFAULT_STABLE_VIDEO_DELAY_SECONDS : realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
       }
     } catch (error) {
       console.warn('Realtime text settings unavailable', error);
@@ -1370,17 +1374,23 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
 
   const subtitleOverlayNode = showSubtitleOverlay && showSubtitleText ? (
     <div
-      className="n2nj-realtime-subtitle-overlay pointer-events-none absolute inset-x-2 bottom-14 z-20 flex justify-center sm:inset-x-6 sm:bottom-16"
+      className={`n2nj-realtime-subtitle-overlay pointer-events-none absolute inset-x-2 z-20 flex justify-center sm:inset-x-6 ${
+        isPortraitViewport ? 'bottom-2' : 'bottom-14 sm:bottom-16'
+      }`}
       style={{ opacity: subtitleOpacity }}
     >
       <div
-        className="max-h-[34vh] w-full max-w-[min(96%,1080px)] overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm [overflow-wrap:anywhere] [word-break:keep-all] sm:px-4"
+        className={`n2nj-realtime-subtitle-box w-full overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm sm:px-4 ${
+          isPortraitViewport
+            ? 'max-h-[42vh] max-w-[min(98%,720px)] [overflow-wrap:anywhere] [word-break:normal]'
+            : 'max-h-[34vh] max-w-[min(96%,1080px)] [overflow-wrap:anywhere] [word-break:keep-all]'
+        }`}
         style={{ fontSize: `${subtitleScale}rem` }}
       >
         {subtitleOverlayRows.map((row, rowIndex) => (
           <div
             key={row.key}
-            className={`realtime-subtitle-roll min-h-[1.35em] text-left ${rowIndex > 0 ? 'mt-1' : ''}`}
+            className={`realtime-subtitle-roll min-h-[1.35em] text-left ${isPortraitViewport ? 'realtime-subtitle-roll--wrap' : ''} ${rowIndex > 0 ? 'mt-1' : ''}`}
             lang={row.lang}
           >
             <div className="realtime-subtitle-roll-track">
@@ -1618,8 +1628,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         setShowTiming(true);
                         const nextDelaySeconds = Math.max(videoDelaySeconds, DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
                         setVideoDelaySeconds(nextDelaySeconds);
-                        persistVideoLatencyMode('aligned');
-                        window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, nextDelaySeconds), 0);
+                        reloadPlayerForLatencyMode('aligned');
                       }}
                       className={`rounded border px-2 py-1 transition ${
                         videoLatencyMode === 'aligned' && transcriptOpen
@@ -1676,8 +1685,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           setVideoLatencyMode('aligned');
                           setShowTranslationText(true);
                           setShowSourceText(true);
-                          persistVideoLatencyMode('aligned');
-                          window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, seconds), 0);
+                          reloadPlayerForLatencyMode('aligned');
                         }}
                         className={`rounded border px-2 py-1 transition ${
                           videoDelaySeconds === seconds && videoLatencyMode === 'aligned'
@@ -1702,8 +1710,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           setVideoLatencyMode('aligned');
                           setShowTranslationText(true);
                           setShowSourceText(true);
-                          persistVideoLatencyMode('aligned');
-                          retunePlaybackLatency(artPlayerRef.current, nextDelaySeconds);
+                          playbackRetuneBlockedUntilRef.current = 0;
+                          lastPlaybackRetuneAtRef.current = 0;
                         }}
                         className="w-20"
                       />
