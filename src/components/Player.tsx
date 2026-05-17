@@ -315,7 +315,6 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const REALTIME_SUBTITLE_CUE_LEAD_MS = 250;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
@@ -472,6 +471,10 @@ function normalizeSegmentsByTimecode(segments: RealtimeTextSegment[]) {
   return [...segments].sort((left, right) => segmentSortTime(left) - segmentSortTime(right));
 }
 
+function hasSourceSubtitleAnchor(segment: RealtimeTextSegment) {
+  return Boolean(segment.sourceText?.trim());
+}
+
 function findRealtimeTextWindow(
   segments: RealtimeTextSegment[],
   partial: RealtimeTextSegment | null | undefined,
@@ -486,6 +489,9 @@ function findRealtimeTextWindow(
     let sawTimeline = false;
 
     for (const segment of segments) {
+      if (!hasSourceSubtitleAnchor(segment)) {
+        continue;
+      }
       const range = getSegmentTimecodeRange(segment);
       if (!range) {
         continue;
@@ -500,8 +506,7 @@ function findRealtimeTextWindow(
       let current: RealtimeTextSegment | null = null;
       for (let index = 0; index < timecodedSegments.length; index += 1) {
         const item = timecodedSegments[index];
-        const cueAt = Math.max(item.startAt, item.endAt - REALTIME_SUBTITLE_CUE_LEAD_MS);
-        if (targetWallTimeMs < cueAt) {
+        if (targetWallTimeMs < item.startAt) {
           break;
         }
         previous = current;
@@ -770,15 +775,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const subtitlePresetActive = videoLatencyMode === 'aligned' && subtitlesVisible && !transcriptOpen;
   const lowLatencyPresetActive = videoLatencyMode === 'low' && !subtitlesVisible && !transcriptOpen;
   const realtimeSettingsKey = `n2nj:realtime-text:${player.pId}`;
-  const transcriptRows = realtimeSegments.map((segment, index) => {
+  const transcriptRows = realtimeSegments.map((segment) => {
     const intervalMs = realtimeConfig.cursorIntervalSeconds * 1000;
     const bucket = Math.floor(segment.startMs / intervalMs);
-    const previous = realtimeSegments[index - 1];
-    const previousBucket = previous ? Math.floor(previous.startMs / intervalMs) : null;
     return {
       segment,
-      bucket,
-      showMarker: realtimeConfig.cursorMarkers && bucket !== previousBucket,
       color: markerColor(bucket),
     };
   });
@@ -1409,8 +1410,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
                         <span
                           key={`overlay-source-${segment.id}`}
-                          className={isCurrent ? 'font-bold text-white' : 'font-light'}
-                          style={{ color: isCurrent ? undefined : color }}
+                          className={isCurrent ? 'font-bold' : 'font-light'}
+                          style={{ color }}
                         >
                           {segment.sourceText || ''}
                           {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
@@ -1423,8 +1424,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
                         <span
                           key={`overlay-translation-${segment.id}`}
-                          className={segment.translatedText ? (isCurrent ? 'font-bold text-white' : 'font-light') : 'text-white/20'}
-                          style={{ color: isCurrent || !segment.translatedText ? undefined : color }}
+                          className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
+                          style={{ color: segment.translatedText ? color : undefined }}
                         >
                           {segment.translatedText || ''}
                           {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
@@ -1671,19 +1672,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                   </div>
                   <div ref={sourceTranscriptRef} className="h-[calc(100%-28px)] overflow-x-hidden overflow-y-auto px-3 pb-2 font-mono text-[12px] leading-6">
                     <p className="whitespace-normal text-slate-200 [overflow-wrap:anywhere] [word-break:keep-all]" lang="ja">
-                      {transcriptRows.map(({ segment, bucket, showMarker, color }) => (
+                      {transcriptRows.map(({ segment, color }) => (
                         <span key={`source-${segment.id}`}>
-                          {showMarker && (
-                            <span
-                              className="mx-1 inline-flex items-center rounded px-1 text-[10px] tabular-nums text-slate-950"
-                              style={{ backgroundColor: color }}
-                            >
-                              +{formatDuration(bucket * realtimeConfig.cursorIntervalSeconds * 1000)}
-                            </span>
-                          )}
                           <span
                             className="rounded-sm px-0.5"
-                            style={{ backgroundColor: showMarker ? `${color}18` : 'transparent' }}
+                            style={{ color }}
                           >
                             {segment.sourceText || ''}
                           </span>
@@ -1705,19 +1698,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                   </div>
                   <div ref={translationTranscriptRef} className="h-[calc(100%-28px)] overflow-x-hidden overflow-y-auto px-3 pb-2 font-mono text-[12px] leading-6">
                     <p className="whitespace-normal text-slate-100 [overflow-wrap:anywhere] [word-break:keep-all]" lang="zh-CN">
-                      {transcriptRows.map(({ segment, bucket, showMarker, color }) => (
+                      {transcriptRows.map(({ segment, color }) => (
                         <span key={`translation-${segment.id}`}>
-                          {showMarker && (
-                            <span
-                              className="mx-1 inline-flex items-center rounded px-1 text-[10px] tabular-nums text-slate-950"
-                              style={{ backgroundColor: color }}
-                            >
-                              +{formatDuration(bucket * realtimeConfig.cursorIntervalSeconds * 1000)}
-                            </span>
-                          )}
                           <span
                             className={`rounded-sm px-0.5 ${segment.translatedText ? '' : 'text-slate-600'}`}
-                            style={{ backgroundColor: showMarker ? `${color}18` : 'transparent' }}
+                            style={{ color: segment.translatedText ? color : undefined }}
                           >
                             {segment.translatedText || ''}
                           </span>
