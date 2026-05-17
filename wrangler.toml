@@ -42,6 +42,7 @@ database_id = "d15dd1a7-ccd9-4b7c-8309-0f8a586ac881"
 # 非敏感信息
 [vars]
 INTERNAL_API_URL = "https://idol-bbq-internal.n2nj.moe"
+STREAMSERV_ARCHIVE_API_URL = "https://stream.n2nj.moe/archive-api"
 
 # 敏感信息通过 wrangler secret 设置：
 # echo "值" | npx wrangler secret put SECRET_NAME
