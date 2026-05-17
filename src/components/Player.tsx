@@ -315,7 +315,7 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const SOURCE_SUBTITLE_DISPLAY_DELAY_MS = 350;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 1;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
@@ -507,7 +507,7 @@ function findRealtimeTextWindow(
       let current: RealtimeTextSegment | null = null;
       for (let index = 0; index < timecodedSegments.length; index += 1) {
         const item = timecodedSegments[index];
-        if (targetWallTimeMs < item.startAt + SOURCE_SUBTITLE_DISPLAY_DELAY_MS) {
+        if (targetWallTimeMs < item.startAt) {
           break;
         }
         previous = current;
@@ -722,7 +722,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const [showSourceText, setShowSourceText] = useState(DEFAULT_REALTIME_TEXT_CONFIG.showSource);
   const [showTranslationText, setShowTranslationText] = useState(DEFAULT_REALTIME_TEXT_CONFIG.showTranslation);
   const [showTiming, setShowTiming] = useState(DEFAULT_REALTIME_TEXT_CONFIG.showTiming);
-  const [subtitleOffsetSeconds, setSubtitleOffsetSeconds] = useState(0);
+  const [subtitleOffsetSeconds, setSubtitleOffsetSeconds] = useState(DEFAULT_SUBTITLE_OFFSET_SECONDS);
   const [videoDelaySeconds, setVideoDelaySeconds] = useState(
     DEFAULT_REALTIME_TEXT_CONFIG.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS,
   );
@@ -849,7 +849,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowTranslationText(true);
     setShowSourceText(true);
     setShowTiming(false);
-    setSubtitleOffsetSeconds(0);
+    setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setSubtitleOpacity((value) => Math.max(value, isPortraitViewport ? 0.86 : 0.78));
     setSubtitleScale((value) => isPortraitViewport ? Math.min(value, 0.95) : value);
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
@@ -865,7 +865,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowSourceText(false);
     setShowTiming(false);
     setTranscriptOpen(false);
-    setSubtitleOffsetSeconds(0);
+    setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setVideoDelaySeconds(0);
     reloadHlsForLatencyMode(artPlayerRef.current, 'low');
     if (closeControls) {
@@ -960,7 +960,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowTranslationText(realtimeConfig.showTranslation);
     setShowTiming(realtimeConfig.showTiming);
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
-    setSubtitleOffsetSeconds(0);
+    setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
   }, [
     realtimeConfig.subtitleOpacity,
     realtimeConfig.subtitleScale,
@@ -1007,9 +1007,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
           setShowTiming(stored.showTiming);
         }
         if (typeof stored.subtitleOffsetSeconds === 'number') {
-          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleOffsetSeconds, 0, 0, 30));
+          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleOffsetSeconds, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, 30));
         } else if (typeof stored.subtitleDelaySeconds === 'number') {
-          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleDelaySeconds, 0, 0, 30));
+          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleDelaySeconds, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, 30));
         }
         if (typeof stored.videoDelaySeconds === 'number') {
           setVideoDelaySeconds(clampUiNumber(
@@ -1036,7 +1036,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowSourceText(true);
         setShowTranslationText(true);
         setShowTiming(false);
-        setSubtitleOffsetSeconds(0);
+        setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
         setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
       }
       if (preset === 'low' || latency === 'low' || subtitle === 'off') {
@@ -1045,7 +1045,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowSourceText(false);
         setShowTiming(false);
         setTranscriptOpen(false);
-        setSubtitleOffsetSeconds(0);
+        setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
         setVideoDelaySeconds(0);
       } else if (preset === 'aligned' || subtitle === 'on') {
         setVideoLatencyMode('aligned');
@@ -1053,7 +1053,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowSourceText(true);
         setShowTiming(true);
         setTranscriptOpen(false);
-        setSubtitleOffsetSeconds(0);
+        setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
         setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
       }
     } catch (error) {
@@ -1518,7 +1518,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         setShowSourceText(true);
                         setShowTiming(false);
                         setTranscriptOpen(false);
-                        setSubtitleOffsetSeconds(0);
+                        setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
                         setVideoDelaySeconds(DEFAULT_STABLE_VIDEO_DELAY_SECONDS);
                         reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
                       }}
@@ -1583,6 +1583,19 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         className="w-20"
                       />
                       <span className="tabular-nums">{videoDelaySeconds}s</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <span>字幕延迟</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="2.5"
+                        step="0.05"
+                        value={subtitleOffsetSeconds}
+                        onChange={(event) => setSubtitleOffsetSeconds(Number(event.target.value))}
+                        className="w-20"
+                      />
+                      <span className="min-w-[3.4rem] tabular-nums">{Math.round(subtitleOffsetSeconds * 1000)}ms</span>
                     </label>
                     <label className="inline-flex items-center gap-2">
                       <span>字</span>
@@ -1681,9 +1694,6 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           >
                             {segment.sourceText || ''}
                           </span>
-                          {segment.sourceText?.trim() && (
-                            <span className="mx-1 text-slate-500/55">/</span>
-                          )}
                         </span>
                       ))}
                     </p>
@@ -1707,9 +1717,6 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           >
                             {segment.translatedText || ''}
                           </span>
-                          {segment.translatedText?.trim() && (
-                            <span className="mx-1 text-slate-500/55">/</span>
-                          )}
                         </span>
                       ))}
                     </p>
