@@ -384,15 +384,15 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 0;
-const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 0;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 2.4;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 2.4;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
 const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 6;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
-const REALTIME_SNAPSHOT_POLL_MS = 4000;
+const REALTIME_SNAPSHOT_POLL_MS = 1500;
 const LOW_LATENCY_HLS_CONFIG = {
   lowLatencyMode: true,
   liveSyncDurationCount: 1,
@@ -424,7 +424,7 @@ type PlaybackTimecode = {
 
 type VideoLatencyMode = 'aligned' | 'low';
 
-const REALTIME_SETTINGS_VERSION = 4;
+const REALTIME_SETTINGS_VERSION = 6;
 
 function getUrlRealtimePreset() {
   if (typeof window === 'undefined') {
@@ -786,9 +786,7 @@ function readPlaybackTimecode(art: Artplayer | null): PlaybackTimecode {
         : null;
       return targetDuration !== null && syncCount !== null ? Math.max(0, targetDuration * syncCount) : null;
     })();
-  const effectiveLatencySeconds = latencySeconds !== null && configuredLatencySeconds !== null
-    ? Math.min(latencySeconds, configuredLatencySeconds)
-    : latencySeconds;
+  const effectiveLatencySeconds = latencySeconds ?? configuredLatencySeconds;
   const currentTime = video && Number.isFinite(video.currentTime) ? video.currentTime : null;
   const liveSyncPosition = hls && typeof hls.liveSyncPosition === 'number' && Number.isFinite(hls.liveSyncPosition)
     ? hls.liveSyncPosition
