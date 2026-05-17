@@ -22,6 +22,16 @@ declare module 'artplayer' {
   }
 }
 
+const MUTE_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 17.5 12zm-2.5-8.5v2.06a7 7 0 0 1 0 12.88v2.06a9 9 0 0 0 0-17z" fill="currentColor"/></svg>';
+const MUTED_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm12.59 3-2.3-2.29 1.42-1.42L18 10.59l2.29-2.3 1.42 1.42L19.41 12l2.3 2.29-1.42 1.42L18 13.41l-2.29 2.3-1.42-1.42L16.59 12z" fill="currentColor"/></svg>';
+const muteControlListeners = new WeakMap<HTMLElement, EventListener>();
+
+function renderMuteControl(art: Artplayer, element: HTMLElement) {
+  const muted = art.video.muted || art.video.volume <= 0;
+  element.innerHTML = muted ? MUTED_ICON_HTML : MUTE_ICON_HTML;
+  element.title = muted ? '取消静音' : '静音';
+}
+
 function _Artplayer({
   option,
   getInstance,
@@ -192,6 +202,39 @@ function _Artplayer({
         },
       },
       controls: [
+        {
+          name: 'mute-toggle',
+          index: 19,
+          position: 'right',
+          html: MUTE_ICON_HTML,
+          tooltip: '静音',
+          click: function (this: Artplayer, component) {
+            if (this.video.muted || this.video.volume <= 0) {
+              if (this.video.volume <= 0) {
+                this.volume = 0.7;
+              }
+              this.muted = false;
+            } else {
+              this.muted = true;
+            }
+            if (component.$parent) {
+              renderMuteControl(this, component.$parent);
+            }
+          },
+          mounted: function (this: Artplayer, element) {
+            renderMuteControl(this, element);
+            const update = () => renderMuteControl(this, element);
+            muteControlListeners.set(element, update);
+            this.video.addEventListener('volumechange', update);
+          },
+          beforeUnmount: function (this: Artplayer, element) {
+            const update = muteControlListeners.get(element);
+            if (update) {
+              this.video.removeEventListener('volumechange', update);
+              muteControlListeners.delete(element);
+            }
+          },
+        },
         {
           name: 'pip',
           index: 20,

@@ -10,9 +10,5 @@ export function isTwentyTwoSevenPid(pId?: string | null) {
 }
 
 export function isTwentyTwoSevenPlayer(player: PlayerIdentity) {
-  if (isTwentyTwoSevenPid(player.pId)) {
-    return true;
-  }
-
-  return /22\s*[/／-]\s*7|ナナニジ|nanabun/i.test(`${player.pId || ''} ${player.name || ''} ${player.runtimeName || ''}`);
+  return isTwentyTwoSevenPid(player.pId);
 }

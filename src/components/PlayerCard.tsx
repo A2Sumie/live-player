@@ -55,7 +55,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
       <Link href={`/player/${player.pId}${isTwentyTwoSeven ? '?preset=low' : ''}`} className="block">
         <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/26 shadow-lg shadow-slate-900/12 backdrop-blur-lg transition-shadow duration-300 hover:shadow-xl dark:border-white/10 dark:bg-slate-900/70">
           {isTwentyTwoSeven && (
-            <div className="absolute left-3 top-3 z-10 rounded-full border border-cyan-200/80 bg-white/90 px-2.5 py-1 text-xs font-semibold text-cyan-700 shadow-sm">
+            <div className="absolute right-3 top-3 z-10 rounded-full border border-cyan-200/80 bg-white/90 px-2.5 py-1 text-xs font-semibold text-cyan-700 shadow-sm">
               ★ 22/7
             </div>
           )}
