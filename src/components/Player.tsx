@@ -317,7 +317,8 @@ const MARKER_COLORS = [
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
 const DEFAULT_SUBTITLE_OFFSET_SECONDS = 3;
-const SUBTITLE_OFFSET_MAX_SECONDS = 5;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 5;
+const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
@@ -872,7 +873,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowTranslationText(false);
     setShowSourceText(true);
     setShowTiming(false);
-    setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
+    setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
     setSubtitleOpacity((value) => Math.max(value, isPortraitViewport ? 0.86 : 0.78));
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
     reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
@@ -1293,6 +1294,55 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     }
   };
 
+  const currentSubtitlePiece = subtitleTextPieces.find(({ isCurrent }) => isCurrent) || subtitleTextPieces[subtitleTextPieces.length - 1] || null;
+  const previousSubtitlePieces = currentSubtitlePiece
+    ? subtitleTextPieces.filter(({ segment }) => segment.id !== currentSubtitlePiece.segment.id)
+    : subtitleTextPieces.slice(0, -1);
+  const subtitleOverlayRows = showSourceText && showTranslationText
+    ? [
+      {
+        key: 'source',
+        lang: 'ja',
+        pieces: subtitleTextPieces,
+        getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
+      },
+      {
+        key: 'translation',
+        lang: 'zh-CN',
+        pieces: subtitleTextPieces,
+        getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
+      },
+    ]
+    : showSourceText
+      ? [
+        {
+          key: 'source-context',
+          lang: 'ja',
+          pieces: previousSubtitlePieces,
+          getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
+        },
+        {
+          key: 'source-current',
+          lang: 'ja',
+          pieces: currentSubtitlePiece ? [currentSubtitlePiece] : [],
+          getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
+        },
+      ]
+      : [
+        {
+          key: 'translation-context',
+          lang: 'zh-CN',
+          pieces: previousSubtitlePieces,
+          getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
+        },
+        {
+          key: 'translation-current',
+          lang: 'zh-CN',
+          pieces: currentSubtitlePiece ? [currentSubtitlePiece] : [],
+          getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
+        },
+      ];
+
   const subtitleOverlayNode = showSubtitleOverlay && showSubtitleText ? (
     <div
       className="n2nj-realtime-subtitle-overlay pointer-events-none absolute inset-x-2 bottom-14 z-20 flex justify-center sm:inset-x-6 sm:bottom-16"
@@ -1302,42 +1352,33 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         className="max-h-[34vh] w-full max-w-[min(96%,1080px)] overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm [overflow-wrap:anywhere] [word-break:keep-all] sm:px-4"
         style={{ fontSize: `${subtitleScale}rem` }}
       >
-        <div className={`realtime-subtitle-roll text-left ${showSourceText ? '' : 'invisible'}`} lang="ja">
-          <div className="realtime-subtitle-roll-track">
-            {showSourceText ? (
-              subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                <span
-                  key={`overlay-source-${segment.id}`}
-                  className={isCurrent ? 'font-bold' : 'font-light'}
-                  style={{ color }}
-                >
-                  {segment.sourceText || ''}
-                  {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
-                </span>
-              ))
-            ) : (
-              <span>&nbsp;</span>
-            )}
+        {subtitleOverlayRows.map((row, rowIndex) => (
+          <div
+            key={row.key}
+            className={`realtime-subtitle-roll min-h-[1.35em] text-left ${rowIndex > 0 ? 'mt-1' : ''}`}
+            lang={row.lang}
+          >
+            <div className="realtime-subtitle-roll-track">
+              {row.pieces.some(({ segment }) => row.getText(segment).trim()) ? (
+                row.pieces.map(({ segment, color, isCurrent }) => {
+                  const text = row.getText(segment);
+                  return text.trim() ? (
+                    <span
+                      key={`overlay-${row.key}-${segment.id}`}
+                      className={isCurrent ? 'font-bold' : 'font-light'}
+                      style={{ color }}
+                    >
+                      {text}
+                      <span className="text-white/20"> </span>
+                    </span>
+                  ) : null;
+                })
+              ) : (
+                <span>&nbsp;</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className={`mt-1 border-t border-white/10 pt-1 realtime-subtitle-roll text-left ${showTranslationText ? '' : 'invisible'}`} lang="zh-CN">
-          <div className="realtime-subtitle-roll-track">
-            {showTranslationText ? (
-              subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                <span
-                  key={`overlay-translation-${segment.id}`}
-                  className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
-                  style={{ color: segment.translatedText ? color : undefined }}
-                >
-                  {segment.translatedText || ''}
-                  {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
-                </span>
-              ))
-            ) : (
-              <span>&nbsp;</span>
-            )}
-          </div>
-        </div>
+        ))}
         {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
           <div className="mt-1 text-[0.66em] font-medium text-white/58">
             JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s · 采 {activeCaptureClock} · 收 {activeReceiveLag}
@@ -1732,7 +1773,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               )}
 
               {showSourceText && (
-                <section className="min-h-0 flex-1 border-b border-white/10">
+                <section className="min-h-0 flex-1">
                   <div className="flex items-center justify-between px-3 py-1.5 text-[11px] font-medium text-slate-400">
                     <span>原文</span>
                     <span>{activeCaptureClock}</span>
