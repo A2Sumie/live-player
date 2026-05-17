@@ -32,6 +32,27 @@ function renderMuteControl(art: Artplayer, element: HTMLElement) {
   element.title = muted ? '取消静音' : '静音';
 }
 
+function requestLivePlayback(art: Artplayer, allowMutedFallback = true) {
+  if (!art.option.isLive) {
+    return;
+  }
+  const url = String(art.option.url || '');
+  if (url === 'http://offline' || url === 'https://offline') {
+    return;
+  }
+
+  const playResult = art.play();
+  void Promise.resolve(playResult).catch(() => {
+    if (!allowMutedFallback) {
+      return;
+    }
+    art.muted = true;
+    void Promise.resolve(art.play()).catch(() => {
+      art.notice.show = '浏览器阻止自动播放，请点一下播放';
+    });
+  });
+}
+
 function _Artplayer({
   option,
   getInstance,
@@ -136,6 +157,7 @@ function _Artplayer({
               if (art.plugins.artplayerPluginHlsControl) {
                 (art.plugins.artplayerPluginHlsControl as any).update();
               }
+              requestLivePlayback(art);
 
               if (saved) {
                 if (saved === 'auto') {
@@ -296,11 +318,22 @@ function _Artplayer({
     });
 
     // Enforce "No Pause" policy for Live Player & Auto-Sync
+    const livePlaybackTimer = window.setInterval(() => requestLivePlayback(art), 3000);
     art.on('pause', () => {
       if (!art.option.isLive) return;
       art.notice.show = '直播模式无法暂停';
-      art.play();
+      requestLivePlayback(art);
     });
+    art.on('ready', () => requestLivePlayback(art));
+    art.on('video:canplay', () => requestLivePlayback(art));
+    art.on('video:stalled', () => requestLivePlayback(art));
+    art.on('video:waiting', () => requestLivePlayback(art, false));
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestLivePlayback(art);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     if (getInstance && typeof getInstance === "function") {
       getInstance(art);
@@ -308,6 +341,8 @@ function _Artplayer({
 
     return () => {
       console.log('destroy outside')
+      window.clearInterval(livePlaybackTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (art && art.destroy) {
         console.log('destroy inside')
         art.destroy(false);
@@ -349,8 +384,8 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 3;
-const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 5;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 0;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 0;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
@@ -362,6 +397,8 @@ const LOW_LATENCY_HLS_CONFIG = {
   lowLatencyMode: true,
   liveSyncDurationCount: 1,
   liveMaxLatencyDurationCount: 4,
+  liveDurationInfinity: true,
+  maxLiveSyncPlaybackRate: 1.2,
 };
 const REALTIME_VIDEO_MODE_KEY = 'n2nj:realtime-video-mode';
 const REALTIME_VIDEO_DELAY_KEY = 'n2nj:realtime-video-delay-seconds';
@@ -372,6 +409,8 @@ function makeAlignedHlsConfig(targetDelaySeconds: number) {
     lowLatencyMode: false,
     liveSyncDuration,
     liveMaxLatencyDuration: Math.max(liveSyncDuration + 10, liveSyncDuration * 1.6),
+    liveDurationInfinity: true,
+    maxLiveSyncPlaybackRate: 1.15,
   };
 }
 
@@ -385,7 +424,7 @@ type PlaybackTimecode = {
 
 type VideoLatencyMode = 'aligned' | 'low';
 
-const REALTIME_SETTINGS_VERSION = 3;
+const REALTIME_SETTINGS_VERSION = 4;
 
 function getUrlRealtimePreset() {
   if (typeof window === 'undefined') {
@@ -735,13 +774,28 @@ function readPlaybackTimecode(art: Artplayer | null): PlaybackTimecode {
   const latencySeconds = hls && typeof hls.latency === 'number' && Number.isFinite(hls.latency)
     ? hls.latency
     : null;
+  const hlsConfig = (hls as any)?.config;
+  const configuredLatencySeconds = hlsConfig && typeof hlsConfig.liveSyncDuration === 'number' && Number.isFinite(hlsConfig.liveSyncDuration)
+    ? hlsConfig.liveSyncDuration
+    : (() => {
+      const targetDuration = typeof (hls as any)?.targetDuration === 'number' && Number.isFinite((hls as any).targetDuration)
+        ? (hls as any).targetDuration
+        : null;
+      const syncCount = typeof hlsConfig?.liveSyncDurationCount === 'number' && Number.isFinite(hlsConfig.liveSyncDurationCount)
+        ? hlsConfig.liveSyncDurationCount
+        : null;
+      return targetDuration !== null && syncCount !== null ? Math.max(0, targetDuration * syncCount) : null;
+    })();
+  const effectiveLatencySeconds = latencySeconds !== null && configuredLatencySeconds !== null
+    ? Math.min(latencySeconds, configuredLatencySeconds)
+    : latencySeconds;
   const currentTime = video && Number.isFinite(video.currentTime) ? video.currentTime : null;
   const liveSyncPosition = hls && typeof hls.liveSyncPosition === 'number' && Number.isFinite(hls.liveSyncPosition)
     ? hls.liveSyncPosition
     : null;
 
-  if (latencySeconds !== null && latencySeconds >= 0) {
-    const latencyMs = latencySeconds * 1000;
+  if (effectiveLatencySeconds !== null && effectiveLatencySeconds >= 0) {
+    const latencyMs = effectiveLatencySeconds * 1000;
     return {
       wallTimeMs: Date.now() - latencyMs,
       latencyMs,
@@ -916,7 +970,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     mutex: true,
     backdrop: true,
     playsInline: true,
-    autoPlayback: true,
+    autoPlayback: false,
     airplay: true,
     theme: '#00d4ff',
     lang: 'zh-cn',
@@ -1108,8 +1162,10 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         const stored = JSON.parse(raw) as StoredRealtimeSettings;
         const storedVersion = typeof stored.version === 'number' ? stored.version : 0;
         const storedSubtitleOffset = (value: number) => {
-          const clamped = clampUiNumber(value, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, SUBTITLE_OFFSET_MAX_SECONDS);
-          return storedVersion < REALTIME_SETTINGS_VERSION && clamped <= 0 ? DEFAULT_SUBTITLE_OFFSET_SECONDS : clamped;
+          if (storedVersion < REALTIME_SETTINGS_VERSION) {
+            return DEFAULT_SUBTITLE_OFFSET_SECONDS;
+          }
+          return clampUiNumber(value, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, SUBTITLE_OFFSET_MAX_SECONDS);
         };
         if (typeof stored.transcriptOpen === 'boolean') {
           setTranscriptOpen(stored.transcriptOpen);
