@@ -68,6 +68,26 @@ export const systemLogs = sqliteTable('system_logs', {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const realtimeTextSegments = sqliteTable('realtime_text_segments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pId: text('p_id').notNull(),
+  streamId: text('stream_id').notNull(),
+  segmentId: text('segment_id').notNull().unique(),
+  startMs: integer('start_ms').notNull().default(0),
+  endMs: integer('end_ms'),
+  sourceText: text('source_text'),
+  translatedText: text('translated_text'),
+  language: text('language'),
+  isFinal: integer('is_final', { mode: 'boolean' }).notNull().default(false),
+  eventCreatedAt: text('event_created_at'),
+  receivedAt: text('received_at'),
+  asrLatencyMs: integer('asr_latency_ms'),
+  eventSequence: integer('event_sequence'),
+  timelineMeta: text('timeline_meta'),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Player = typeof players.$inferSelect;
 export type NewPlayer = typeof players.$inferInsert;
 export type PlayerWithBase64Image = Player & { coverImageBase64: string | null };
@@ -83,3 +103,6 @@ export type NewSchedule = typeof schedules.$inferInsert;
 
 export type SystemLog = typeof systemLogs.$inferSelect;
 export type NewSystemLog = typeof systemLogs.$inferInsert;
+
+export type RealtimeTextSegmentRow = typeof realtimeTextSegments.$inferSelect;
+export type NewRealtimeTextSegmentRow = typeof realtimeTextSegments.$inferInsert;

@@ -320,6 +320,7 @@ const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
+const REALTIME_SNAPSHOT_POLL_MS = 4000;
 const LOW_LATENCY_HLS_CONFIG = {
   lowLatencyMode: true,
   liveSyncDurationCount: 1,
@@ -1112,10 +1113,13 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     let disposed = false;
     let eventSource: EventSource | null = null;
     let reconnectTimer: number | null = null;
+    let pollTimer: number | null = null;
     let reconnectAttempt = 0;
     const params = debug && debugRealtimeEnabled ? '?force=1' : '';
     const snapshotUrl = `/api/players/by-pid/${encodeURIComponent(player.pId)}/realtime-text${params}`;
     const eventsUrl = `/api/players/by-pid/${encodeURIComponent(player.pId)}/realtime-text/events${params}`;
+    const urlParams = new URLSearchParams(window.location.search);
+    const useRealtimeEvents = urlParams.get('events') === '1' || urlParams.get('transport') === 'sse';
 
     const applySnapshot = (snapshot: RealtimeTextSnapshot) => {
       if (disposed) {
@@ -1186,11 +1190,17 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
 
     const initialController = new AbortController();
     void fetchSnapshot(initialController.signal);
-    connectEvents();
 
-    const fallbackTimer = window.setInterval(() => {
-      void fetchSnapshot();
-    }, 15000);
+    if (useRealtimeEvents) {
+      connectEvents();
+      pollTimer = window.setInterval(() => {
+        void fetchSnapshot();
+      }, 15000);
+    } else {
+      pollTimer = window.setInterval(() => {
+        void fetchSnapshot();
+      }, REALTIME_SNAPSHOT_POLL_MS);
+    }
 
     return () => {
       disposed = true;
@@ -1199,7 +1209,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
-      window.clearInterval(fallbackTimer);
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+      }
     };
   }, [debug, debugRealtimeEnabled, player.pId]);
 

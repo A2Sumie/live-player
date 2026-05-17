@@ -17,6 +17,7 @@ const JWT_SECRET: string = process.env.JWT_SECRET;
 const JWT_SECRET_KEY = new TextEncoder().encode(JWT_SECRET);
 const ADMIN_ACCOUNT: string = process.env.ADMIN_ACCOUNT;
 const ADMIN_PASSWORD: string = process.env.ADMIN_PASSWORD;
+const STREAMSERV_WORKER_USER_AGENT = process.env.STREAMSERV_WORKER_USER_AGENT || 'N2NJ-Stream-Bot/1.0';
 
 export interface JWTPayload {
   username: string;
@@ -136,4 +137,66 @@ export async function getCurrentUserFromRequest(request: NextRequest): Promise<J
   }
 
   return await verifyToken(token);
+}
+
+export async function getCurrentUserFromRequestOrInternalAdmin(request: NextRequest): Promise<JWTPayload | null> {
+  if (await isStreamServInternalRequest(request)) {
+    return {
+      username: 'streamserv',
+      role: 'admin',
+    };
+  }
+
+  return getCurrentUserFromRequest(request);
+}
+
+export async function isStreamServInternalRequest(request: NextRequest): Promise<boolean> {
+  const expectedSecret = extractWafBypassSecret(process.env.WAF_BYPASS_HEADER);
+  if (!expectedSecret) {
+    return false;
+  }
+
+  const userAgent = request.headers.get('user-agent')?.trim();
+  if (userAgent !== STREAMSERV_WORKER_USER_AGENT) {
+    return false;
+  }
+
+  const providedSecret = request.headers.get('x-bypass-waf')?.trim();
+  if (!providedSecret) {
+    return false;
+  }
+
+  return timingSafeEqualStrings(providedSecret, expectedSecret);
+}
+
+function extractWafBypassSecret(rawHeader?: string): string | null {
+  const normalized = rawHeader?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const separatorIndex = normalized.indexOf(':');
+  if (separatorIndex > 0) {
+    const value = normalized.slice(separatorIndex + 1).trim();
+    return value || null;
+  }
+
+  return normalized;
+}
+
+async function timingSafeEqualStrings(provided: string, expected: string): Promise<boolean> {
+  const [providedHash, expectedHash] = await Promise.all([
+    sha256(provided),
+    sha256(expected),
+  ]);
+
+  let diff = providedHash.byteLength ^ expectedHash.byteLength;
+  for (let i = 0; i < providedHash.byteLength; i += 1) {
+    diff |= providedHash[i] ^ expectedHash[i];
+  }
+  return diff === 0;
+}
+
+async function sha256(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
 }
