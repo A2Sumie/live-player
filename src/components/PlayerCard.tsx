@@ -1,11 +1,10 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/middleware/WithAuth';
 import type { Player } from '@/lib/db';
 import ObfuscatedText from './ObfuscatedText';
-
+import { isTwentyTwoSevenPlayer } from '@/lib/player-flags';
 
 interface PlayerCardProps {
   player: Player;
@@ -15,6 +14,7 @@ interface PlayerCardProps {
 
 export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps) {
   const { user } = useAuth();
+  const isTwentyTwoSeven = isTwentyTwoSevenPlayer(player);
 
   // Determine cover image source - convert binary data to base64 on client side
   const getCoverImageSrc = () => {
@@ -48,10 +48,24 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     onDelete?.(player);
   };
 
+  const openPlayerPreset = (e: React.MouseEvent, preset: 'aligned' | 'low') => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pid = encodeURIComponent(player.pId);
+    window.location.href = preset === 'low'
+      ? `/player/${pid}?preset=low`
+      : `/player/${pid}?preset=aligned`;
+  };
+
   return (
     <div className="group relative">
       <Link href={`/player/${player.pId}`} className="block">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
+        <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/26 shadow-lg shadow-slate-900/12 backdrop-blur-lg transition-shadow duration-300 hover:shadow-xl dark:border-white/10 dark:bg-slate-900/70">
+          {isTwentyTwoSeven && (
+            <div className="absolute left-3 top-3 z-10 rounded-full border border-cyan-200/80 bg-white/90 px-2.5 py-1 text-xs font-semibold text-cyan-700 shadow-sm">
+              ★ 22/7
+            </div>
+          )}
           {coverImageSrc && (
             <div className="aspect-w-16 aspect-h-9 relative">
               <img
@@ -86,18 +100,38 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
 
           <div className="p-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-              <ObfuscatedText text={player.name} playerId={player.pId} />
+              <ObfuscatedText
+                text={player.name}
+                playerId={player.pId}
+                variant="cardTitle"
+                className="block text-[1.05rem] leading-7"
+              />
             </h3>
             {player.description && (
-              <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-3">
-                {player.description}
-              </p>
+              <div className="mb-3 text-sm text-gray-600 dark:text-gray-400 leading-5 line-clamp-2">
+                <ObfuscatedText
+                  text={player.description}
+                  variant="cardBody"
+                  className="block"
+                />
+              </div>
             )}
-            {player.announcement && (
-              <div className="p-2 bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-yellow-400 dark:border-yellow-600 rounded">
-                <p className="text-yellow-800 dark:text-yellow-200 text-xs">
-                  {player.announcement}
-                </p>
+            {isTwentyTwoSeven && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={(event) => openPlayerPreset(event, 'aligned')}
+                  className="rounded border border-cyan-200/80 bg-cyan-50/82 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100/90"
+                >
+                  字幕对齐
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => openPlayerPreset(event, 'low')}
+                  className="rounded border border-slate-300/80 bg-white/72 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white/90"
+                >
+                  最低延迟
+                </button>
               </div>
             )}
             {user?.role === 'admin' && (
@@ -105,13 +139,13 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                 <div className="flex gap-2">
                   <button
                     onClick={handleEdit}
-                    className="flex-1 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                    className="flex-1 rounded border border-blue-200/80 bg-blue-50/82 px-3 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100/90"
                   >
                     编辑
                   </button>
                   <button
                     onClick={handleDelete}
-                    className="flex-1 px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                    className="flex-1 rounded border border-red-200/80 bg-red-50/82 px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-100/90"
                   >
                     删除
                   </button>
@@ -128,7 +162,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
                       });
                       window.location.reload(); // Simple reload to reflect state
                     }}
-                    className="flex-1 px-3 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded hover:bg-orange-100 transition-colors"
+                    className="flex-1 rounded border border-orange-200/80 bg-orange-50/82 px-3 py-1 text-xs font-medium text-orange-600 transition-colors hover:bg-orange-100/90"
                     title="停止并归档转播"
                   >
                     ⏹ 停止转播
