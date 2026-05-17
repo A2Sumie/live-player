@@ -27,6 +27,12 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.n2nj-realtime-subtitle-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+
 .realtime-subtitle-roll {
   overflow: hidden;
   white-space: nowrap;

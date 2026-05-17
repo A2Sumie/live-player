@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Player } from '@/lib/db';
@@ -478,6 +479,22 @@ function hasSourceSubtitleAnchor(segment: RealtimeTextSegment) {
   return Boolean(segment.sourceText?.trim());
 }
 
+function ensureRealtimeSubtitleLayer(art: Artplayer | null) {
+  const layerRoot = (art as any)?.template?.$layer as HTMLElement | undefined;
+  if (!layerRoot) {
+    return null;
+  }
+  const existing = layerRoot.querySelector<HTMLElement>('[data-n2nj-realtime-subtitle-layer="true"]');
+  if (existing) {
+    return existing;
+  }
+  const element = document.createElement('div');
+  element.dataset.n2njRealtimeSubtitleLayer = 'true';
+  element.className = 'art-layer n2nj-realtime-subtitle-layer';
+  layerRoot.appendChild(element);
+  return element;
+}
+
 function findRealtimeTextWindow(
   segments: RealtimeTextSegment[],
   partial: RealtimeTextSegment | null | undefined,
@@ -733,6 +750,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const [isPortraitViewport, setIsPortraitViewport] = useState(false);
   const [nowJst, setNowJst] = useState(() => new Date());
   const [playbackTimecode, setPlaybackTimecode] = useState<PlaybackTimecode>(() => readPlaybackTimecode(null));
+  const [artSubtitleLayerHost, setArtSubtitleLayerHost] = useState<HTMLElement | null>(null);
   const realtimeSnapshotRef = useRef<RealtimeTextSnapshot | null>(null);
   const settingsLoadedRef = useRef(false);
   const portraitPresetAppliedRef = useRef(false);
@@ -777,7 +795,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const playbackClockLabel = playbackTimecode.wallTimeMs !== null ? formatClockJst(playbackTimecode.wallTimeMs) : '--:--:--';
   const videoLatencyLabel = videoLatencyMode === 'low' ? '低延迟' : `目标 ${videoDelaySeconds}s`;
   const subtitlesVisible = showSourceText || showTranslationText;
-  const subtitlePresetActive = videoLatencyMode === 'aligned' && subtitlesVisible && !transcriptOpen;
+  const sourceSubtitlePresetActive = videoLatencyMode === 'aligned' && showSourceText && !showTranslationText && !transcriptOpen;
+  const bilingualPresetActive = videoLatencyMode === 'aligned' && showTranslationText && showSourceText && !transcriptOpen && videoDelaySeconds >= DEFAULT_STABLE_VIDEO_DELAY_SECONDS;
   const lowLatencyPresetActive = videoLatencyMode === 'low' && !subtitlesVisible && !transcriptOpen;
   const realtimeSettingsKey = `n2nj:realtime-text:${player.pId}`;
   const transcriptRows = realtimeSegments.map((segment) => {
@@ -850,7 +869,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const applySubtitlePreset = useCallback((closeControls = true) => {
     setVideoLatencyMode('aligned');
     setTranscriptOpen(false);
-    setShowTranslationText(true);
+    setShowTranslationText(false);
     setShowSourceText(true);
     setShowTiming(false);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
@@ -861,6 +880,20 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
       setRealtimeControlsOpen(false);
     }
   }, [isPortraitViewport, realtimeConfig.videoDelaySeconds]);
+
+  const applyStableBilingualPreset = useCallback((closeControls = true) => {
+    setVideoLatencyMode('aligned');
+    setShowTranslationText(true);
+    setShowSourceText(true);
+    setShowTiming(false);
+    setTranscriptOpen(false);
+    setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
+    setVideoDelaySeconds(DEFAULT_STABLE_VIDEO_DELAY_SECONDS);
+    reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
+    if (closeControls) {
+      setRealtimeControlsOpen(false);
+    }
+  }, []);
 
   const applyLowLatencyPreset = useCallback((closeControls = true) => {
     setVideoLatencyMode('low');
@@ -1260,6 +1293,59 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     }
   };
 
+  const subtitleOverlayNode = showSubtitleOverlay && showSubtitleText ? (
+    <div
+      className="n2nj-realtime-subtitle-overlay pointer-events-none absolute inset-x-2 bottom-14 z-20 flex justify-center sm:inset-x-6 sm:bottom-16"
+      style={{ opacity: subtitleOpacity }}
+    >
+      <div
+        className="max-h-[34vh] w-full max-w-[min(96%,1080px)] overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm [overflow-wrap:anywhere] [word-break:keep-all] sm:px-4"
+        style={{ fontSize: `${subtitleScale}rem` }}
+      >
+        <div className={`realtime-subtitle-roll text-left ${showSourceText ? '' : 'invisible'}`} lang="ja">
+          <div className="realtime-subtitle-roll-track">
+            {showSourceText ? (
+              subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                <span
+                  key={`overlay-source-${segment.id}`}
+                  className={isCurrent ? 'font-bold' : 'font-light'}
+                  style={{ color }}
+                >
+                  {segment.sourceText || ''}
+                  {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
+                </span>
+              ))
+            ) : (
+              <span>&nbsp;</span>
+            )}
+          </div>
+        </div>
+        <div className={`mt-1 border-t border-white/10 pt-1 realtime-subtitle-roll text-left ${showTranslationText ? '' : 'invisible'}`} lang="zh-CN">
+          <div className="realtime-subtitle-roll-track">
+            {showTranslationText ? (
+              subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                <span
+                  key={`overlay-translation-${segment.id}`}
+                  className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
+                  style={{ color: segment.translatedText ? color : undefined }}
+                >
+                  {segment.translatedText || ''}
+                  {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
+                </span>
+              ))
+            ) : (
+              <span>&nbsp;</span>
+            )}
+          </div>
+        </div>
+        {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
+          <div className="mt-1 text-[0.66em] font-medium text-white/58">
+            JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s · 采 {activeCaptureClock} · 收 {activeReceiveLag}
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="flex flex-col h-screen">
@@ -1301,18 +1387,29 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                     : 'text-slate-700 hover:bg-white/90'
                 }`}
               >
-                低延迟
+                生肉(低延迟)
               </button>
               <button
                 type="button"
                 onClick={() => applySubtitlePreset()}
                 className={`min-w-0 flex-1 rounded-md px-3 py-1.5 transition ${
-                  subtitlePresetActive
+                  sourceSubtitlePresetActive
                     ? 'bg-cyan-600 text-white shadow-sm'
                     : 'text-slate-700 hover:bg-white/90'
                 }`}
               >
-                字幕
+                日字 -{DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS}秒
+              </button>
+              <button
+                type="button"
+                onClick={() => applyStableBilingualPreset()}
+                className={`min-w-0 flex-1 rounded-md px-3 py-1.5 transition ${
+                  bilingualPresetActive
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-700 hover:bg-white/90'
+                }`}
+              >
+                中日双字 -{DEFAULT_STABLE_VIDEO_DELAY_SECONDS}秒
               </button>
             </div>
           )}
@@ -1386,6 +1483,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               option={playerOption}
               getInstance={(art) => {
                 artPlayerRef.current = art;
+                setArtSubtitleLayerHost(ensureRealtimeSubtitleLayer(art));
               }}
               debug={debug}
               player={player}
@@ -1404,59 +1502,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               </button>
             )}
 
-            {showSubtitleOverlay && showSubtitleText && (
-              <div
-                className="pointer-events-none absolute inset-x-2 bottom-14 z-20 flex justify-center sm:inset-x-6 sm:bottom-16"
-                style={{ opacity: subtitleOpacity }}
-              >
-                <div
-                  className="max-h-[34vh] w-full max-w-[min(96%,1080px)] overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm [overflow-wrap:anywhere] [word-break:keep-all] sm:px-4"
-                  style={{ fontSize: `${subtitleScale}rem` }}
-                >
-                  <div className={`realtime-subtitle-roll text-left ${showSourceText ? '' : 'invisible'}`} lang="ja">
-                    <div className="realtime-subtitle-roll-track">
-                      {showSourceText ? (
-                        subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                          <span
-                            key={`overlay-source-${segment.id}`}
-                            className={isCurrent ? 'font-bold' : 'font-light'}
-                            style={{ color }}
-                          >
-                            {segment.sourceText || ''}
-                            {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
-                          </span>
-                        ))
-                      ) : (
-                        <span>&nbsp;</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className={`mt-1 border-t border-white/10 pt-1 realtime-subtitle-roll text-left ${showTranslationText ? '' : 'invisible'}`} lang="zh-CN">
-                    <div className="realtime-subtitle-roll-track">
-                      {showTranslationText ? (
-                        subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                          <span
-                            key={`overlay-translation-${segment.id}`}
-                            className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
-                            style={{ color: segment.translatedText ? color : undefined }}
-                          >
-                            {segment.translatedText || ''}
-                            {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
-                          </span>
-                        ))
-                      ) : (
-                        <span>&nbsp;</span>
-                      )}
-                    </div>
-                  </div>
-                  {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
-                    <div className="mt-1 text-[0.66em] font-medium text-white/58">
-                      JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s · 采 {activeCaptureClock} · 收 {activeReceiveLag}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {!artSubtitleLayerHost && subtitleOverlayNode}
+            {artSubtitleLayerHost && subtitleOverlayNode ? createPortal(subtitleOverlayNode, artSubtitleLayerHost) : null}
 
             {(realtimeEnabled || debug) && (
               <div className="absolute right-3 top-3 z-30 max-w-[calc(100%-1.5rem)] text-xs text-white">
@@ -1488,12 +1535,12 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       type="button"
                       onClick={() => applySubtitlePreset(false)}
                       className={`rounded border px-2 py-1 transition ${
-                        subtitlePresetActive && videoDelaySeconds < DEFAULT_STABLE_VIDEO_DELAY_SECONDS
+                        sourceSubtitlePresetActive
                           ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
                           : 'border-white/24 bg-white/12 hover:bg-white/22'
                       }`}
                     >
-                      对齐字幕
+                      日字 -{DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS}秒
                     </button>
                     <button
                       type="button"
@@ -1527,23 +1574,14 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setVideoLatencyMode('aligned');
-                        setShowTranslationText(true);
-                        setShowSourceText(true);
-                        setShowTiming(false);
-                        setTranscriptOpen(false);
-                        setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-                        setVideoDelaySeconds(DEFAULT_STABLE_VIDEO_DELAY_SECONDS);
-                        reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
-                      }}
+                      onClick={() => applyStableBilingualPreset(false)}
                       className={`rounded border px-2 py-1 transition ${
-                        videoLatencyMode === 'aligned' && showTranslationText && showSourceText && !transcriptOpen && videoDelaySeconds >= DEFAULT_STABLE_VIDEO_DELAY_SECONDS
+                        bilingualPresetActive
                           ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
                           : 'border-white/24 bg-white/12 hover:bg-white/22'
                       }`}
                     >
-                      稳定双语
+                      中日双字 -{DEFAULT_STABLE_VIDEO_DELAY_SECONDS}秒
                     </button>
                     <button
                       type="button"
