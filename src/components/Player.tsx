@@ -315,10 +315,12 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 1;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 3;
+const SUBTITLE_OFFSET_MAX_SECONDS = 5;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
+const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 2;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
 const REALTIME_SNAPSHOT_POLL_MS = 4000;
 const LOW_LATENCY_HLS_CONFIG = {
@@ -343,7 +345,7 @@ type PlaybackTimecode = {
 type VideoLatencyMode = 'aligned' | 'low';
 
 const PLAYBACK_SEEK_THRESHOLD_SECONDS = 1.4;
-const REALTIME_SETTINGS_VERSION = 1;
+const REALTIME_SETTINGS_VERSION = 2;
 
 type StoredRealtimeSettings = {
   version?: number;
@@ -553,6 +555,7 @@ function buildSubtitleTextPieces(
   segments: RealtimeTextSegment[],
   current: RealtimeTextSegment | null,
   allowLatestFallback = true,
+  maxSegments = SUBTITLE_CONTEXT_SEGMENTS,
 ): SubtitleTextPiece[] {
   const sorted = normalizeSegmentsByTimecode(segments);
   if (!sorted.length || (!current && !allowLatestFallback)) {
@@ -563,7 +566,7 @@ function buildSubtitleTextPieces(
     ? Math.max(0, sorted.findIndex((segment) => segment.id === current.id))
     : sorted.length - 1;
   const effectiveIndex = currentIndex >= 0 ? currentIndex : sorted.length - 1;
-  const startIndex = Math.max(0, effectiveIndex - SUBTITLE_CONTEXT_SEGMENTS + 1);
+  const startIndex = Math.max(0, effectiveIndex - Math.max(1, maxSegments) + 1);
 
   return sorted.slice(startIndex, effectiveIndex + 1).map((segment) => {
     const range = getSegmentTimecodeRange(segment);
@@ -757,6 +760,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     realtimeSegments,
     activeRealtimeSegment,
     !realtimeTextWindow.usedTimeline || !activeRealtimeSegment,
+    SUBTITLE_OVERLAY_CONTEXT_SEGMENTS,
   );
   const showSubtitleText = Boolean(
     subtitleTextPieces.some(({ segment }) => (
@@ -994,6 +998,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
 
       if (raw) {
         const stored = JSON.parse(raw) as StoredRealtimeSettings;
+        const storedVersion = typeof stored.version === 'number' ? stored.version : 0;
+        const storedSubtitleOffset = (value: number) => {
+          const clamped = clampUiNumber(value, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, SUBTITLE_OFFSET_MAX_SECONDS);
+          return storedVersion < REALTIME_SETTINGS_VERSION && clamped <= 0 ? DEFAULT_SUBTITLE_OFFSET_SECONDS : clamped;
+        };
         if (typeof stored.transcriptOpen === 'boolean') {
           setTranscriptOpen(stored.transcriptOpen);
         }
@@ -1007,9 +1016,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
           setShowTiming(stored.showTiming);
         }
         if (typeof stored.subtitleOffsetSeconds === 'number') {
-          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleOffsetSeconds, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, 30));
+          setSubtitleOffsetSeconds(storedSubtitleOffset(stored.subtitleOffsetSeconds));
         } else if (typeof stored.subtitleDelaySeconds === 'number') {
-          setSubtitleOffsetSeconds(clampUiNumber(stored.subtitleDelaySeconds, DEFAULT_SUBTITLE_OFFSET_SECONDS, 0, 30));
+          setSubtitleOffsetSeconds(storedSubtitleOffset(stored.subtitleDelaySeconds));
         }
         if (typeof stored.videoDelaySeconds === 'number') {
           setVideoDelaySeconds(clampUiNumber(
@@ -1407,31 +1416,35 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                   style={{ fontSize: `${(isPortraitViewport ? 0.9 : 0.96) * subtitleScale}rem` }}
                 >
                   {showSourceText && (
-                    <div className="text-left text-[0.9em]">
-                      {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                        <span
-                          key={`overlay-source-${segment.id}`}
-                          className={isCurrent ? 'font-bold' : 'font-light'}
-                          style={{ color }}
-                        >
-                          {segment.sourceText || ''}
-                          {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
-                        </span>
-                      ))}
+                    <div className="realtime-subtitle-roll text-left text-[0.9em]" lang="ja">
+                      <div className="realtime-subtitle-roll-track">
+                        {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                          <span
+                            key={`overlay-source-${segment.id}`}
+                            className={isCurrent ? 'font-bold' : 'font-light'}
+                            style={{ color }}
+                          >
+                            {segment.sourceText || ''}
+                            {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {showTranslationText && (
-                    <div className={`${showSourceText ? 'mt-1 border-t border-white/10 pt-1' : ''} text-left text-[0.98em]`}>
-                      {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
-                        <span
-                          key={`overlay-translation-${segment.id}`}
-                          className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
-                          style={{ color: segment.translatedText ? color : undefined }}
-                        >
-                          {segment.translatedText || ''}
-                          {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
-                        </span>
-                      ))}
+                    <div className={`${showSourceText ? 'mt-1 border-t border-white/10 pt-1' : ''} realtime-subtitle-roll text-left text-[0.98em]`} lang="zh-CN">
+                      <div className="realtime-subtitle-roll-track">
+                        {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                          <span
+                            key={`overlay-translation-${segment.id}`}
+                            className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
+                            style={{ color: segment.translatedText ? color : undefined }}
+                          >
+                            {segment.translatedText || ''}
+                            {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
@@ -1589,7 +1602,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       <input
                         type="range"
                         min="0"
-                        max="2.5"
+                        max={SUBTITLE_OFFSET_MAX_SECONDS}
                         step="0.05"
                         value={subtitleOffsetSeconds}
                         onChange={(event) => setSubtitleOffsetSeconds(Number(event.target.value))}

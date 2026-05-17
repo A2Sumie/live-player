@@ -26,3 +26,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.realtime-subtitle-roll {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.realtime-subtitle-roll-track {
+  display: inline-block;
+  min-width: 100%;
+  transform: translateX(0);
+  animation: realtime-subtitle-roll 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes realtime-subtitle-roll {
+  0%, 16% {
+    transform: translateX(0);
+  }
+  84%, 100% {
+    transform: translateX(-18%);
+  }
+}
