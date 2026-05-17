@@ -315,6 +315,7 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
+const SOURCE_SUBTITLE_DISPLAY_DELAY_MS = 350;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
@@ -506,7 +507,7 @@ function findRealtimeTextWindow(
       let current: RealtimeTextSegment | null = null;
       for (let index = 0; index < timecodedSegments.length; index += 1) {
         const item = timecodedSegments[index];
-        if (targetWallTimeMs < item.startAt) {
+        if (targetWallTimeMs < item.startAt + SOURCE_SUBTITLE_DISPLAY_DELAY_MS) {
           break;
         }
         previous = current;
