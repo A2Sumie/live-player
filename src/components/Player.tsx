@@ -384,8 +384,8 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 2.4;
-const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 2.4;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 4;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 4;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
@@ -424,7 +424,7 @@ type PlaybackTimecode = {
 
 type VideoLatencyMode = 'aligned' | 'low';
 
-const REALTIME_SETTINGS_VERSION = 6;
+const REALTIME_SETTINGS_VERSION = 7;
 
 function getUrlRealtimePreset() {
   if (typeof window === 'undefined') {
