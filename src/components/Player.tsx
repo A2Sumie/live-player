@@ -32,7 +32,7 @@ function renderMuteControl(art: Artplayer, element: HTMLElement) {
   element.title = muted ? '取消静音' : '静音';
 }
 
-function requestLivePlayback(art: Artplayer, allowMutedFallback = true) {
+function requestLivePlayback(art: Artplayer) {
   if (!art.option.isLive) {
     return;
   }
@@ -43,13 +43,7 @@ function requestLivePlayback(art: Artplayer, allowMutedFallback = true) {
 
   const playResult = art.play();
   void Promise.resolve(playResult).catch(() => {
-    if (!allowMutedFallback) {
-      return;
-    }
-    art.muted = true;
-    void Promise.resolve(art.play()).catch(() => {
-      art.notice.show = '浏览器阻止自动播放，请点一下播放';
-    });
+    art.notice.show = '浏览器阻止自动播放，请点一下播放';
   });
 }
 
@@ -327,7 +321,7 @@ function _Artplayer({
     art.on('ready', () => requestLivePlayback(art));
     art.on('video:canplay', () => requestLivePlayback(art));
     art.on('video:stalled', () => requestLivePlayback(art));
-    art.on('video:waiting', () => requestLivePlayback(art, false));
+    art.on('video:waiting', () => requestLivePlayback(art));
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         requestLivePlayback(art);
