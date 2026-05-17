@@ -322,7 +322,7 @@ const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
-const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 2;
+const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 6;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
 const REALTIME_SNAPSHOT_POLL_MS = 4000;
 const LOW_LATENCY_HLS_CONFIG = {
@@ -724,6 +724,16 @@ function reloadHlsForLatencyMode(art: Artplayer | null, mode: VideoLatencyMode) 
   }
 }
 
+function persistVideoLatencyMode(mode: VideoLatencyMode) {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('n2nj:realtime-video-mode', mode);
+  }
+}
+
+function retunePlaybackLatency(art: Artplayer | null, targetDelaySeconds: number) {
+  tunePlaybackLatency(art, 'aligned', readPlaybackTimecode(art), targetDelaySeconds);
+}
+
 export default function PlayerComponent({ player, debug = false }: PlayerProps) {
   const artPlayerRef = useRef<any>(null);
   const router = useRouter();
@@ -868,6 +878,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   // But we use a ref or closure.
 
   const applySubtitlePreset = useCallback((closeControls = true) => {
+    const previousMode = videoLatencyMode;
     setVideoLatencyMode('aligned');
     setTranscriptOpen(false);
     setShowTranslationText(false);
@@ -876,13 +887,20 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
     setSubtitleOpacity((value) => Math.max(value, isPortraitViewport ? 0.86 : 0.78));
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
-    reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
+    if (previousMode === 'low') {
+      persistVideoLatencyMode('aligned');
+    }
+    window.setTimeout(() => retunePlaybackLatency(
+      artPlayerRef.current,
+      realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS,
+    ), 0);
     if (closeControls) {
       setRealtimeControlsOpen(false);
     }
-  }, [isPortraitViewport, realtimeConfig.videoDelaySeconds]);
+  }, [isPortraitViewport, realtimeConfig.videoDelaySeconds, videoLatencyMode]);
 
   const applyStableBilingualPreset = useCallback((closeControls = true) => {
+    const previousMode = videoLatencyMode;
     setVideoLatencyMode('aligned');
     setShowTranslationText(true);
     setShowSourceText(true);
@@ -890,11 +908,14 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setTranscriptOpen(false);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setVideoDelaySeconds(DEFAULT_STABLE_VIDEO_DELAY_SECONDS);
-    reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
+    if (previousMode === 'low') {
+      persistVideoLatencyMode('aligned');
+    }
+    window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, DEFAULT_STABLE_VIDEO_DELAY_SECONDS), 0);
     if (closeControls) {
       setRealtimeControlsOpen(false);
     }
-  }, []);
+  }, [videoLatencyMode]);
 
   const applyLowLatencyPreset = useCallback((closeControls = true) => {
     setVideoLatencyMode('low');
@@ -1294,54 +1315,58 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     }
   };
 
-  const currentSubtitlePiece = subtitleTextPieces.find(({ isCurrent }) => isCurrent) || subtitleTextPieces[subtitleTextPieces.length - 1] || null;
-  const previousSubtitlePieces = currentSubtitlePiece
-    ? subtitleTextPieces.filter(({ segment }) => segment.id !== currentSubtitlePiece.segment.id)
-    : subtitleTextPieces.slice(0, -1);
-  const subtitleOverlayRows = showSourceText && showTranslationText
-    ? [
-      {
-        key: 'source',
-        lang: 'ja',
-        pieces: subtitleTextPieces,
-        getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
-      },
-      {
-        key: 'translation',
-        lang: 'zh-CN',
-        pieces: subtitleTextPieces,
-        getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
-      },
-    ]
-    : showSourceText
-      ? [
-        {
-          key: 'source-context',
-          lang: 'ja',
-          pieces: previousSubtitlePieces,
-          getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
-        },
-        {
-          key: 'source-current',
-          lang: 'ja',
-          pieces: currentSubtitlePiece ? [currentSubtitlePiece] : [],
-          getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
-        },
-      ]
-      : [
-        {
-          key: 'translation-context',
-          lang: 'zh-CN',
-          pieces: previousSubtitlePieces,
-          getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
-        },
-        {
-          key: 'translation-current',
-          lang: 'zh-CN',
-          pieces: currentSubtitlePiece ? [currentSubtitlePiece] : [],
-          getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
-        },
-      ];
+  const splitSubtitlePieces = (getText: (segment: RealtimeTextSegment) => string) => {
+    const visiblePieces = subtitleTextPieces.filter(({ segment }) => getText(segment).trim());
+    if (visiblePieces.length <= 1) {
+      return [visiblePieces, []] as const;
+    }
+    const weights = visiblePieces.map(({ segment }) => Math.max(1, getText(segment).trim().length));
+    const targetWeight = weights.reduce((sum, weight) => sum + weight, 0) / 2;
+    let splitIndex = 1;
+    let runningWeight = 0;
+    for (let index = 0; index < visiblePieces.length - 1; index += 1) {
+      runningWeight += weights[index];
+      splitIndex = index + 1;
+      if (runningWeight >= targetWeight) {
+        break;
+      }
+    }
+    return [visiblePieces.slice(0, splitIndex), visiblePieces.slice(splitIndex)] as const;
+  };
+  const [sourceSubtitleRowA, sourceSubtitleRowB] = splitSubtitlePieces((segment) => segment.sourceText || '');
+  const [translationSubtitleRowA, translationSubtitleRowB] = splitSubtitlePieces((segment) => segment.translatedText || '');
+  const sourceSubtitleRows = [
+    {
+      key: 'source-context',
+      lang: 'ja',
+      pieces: sourceSubtitleRowA,
+      getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
+    },
+    {
+      key: 'source-current',
+      lang: 'ja',
+      pieces: sourceSubtitleRowB,
+      getText: (segment: RealtimeTextSegment) => segment.sourceText || '',
+    },
+  ];
+  const translationSubtitleRows = [
+    {
+      key: 'translation-context',
+      lang: 'zh-CN',
+      pieces: translationSubtitleRowA,
+      getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
+    },
+    {
+      key: 'translation-current',
+      lang: 'zh-CN',
+      pieces: translationSubtitleRowB,
+      getText: (segment: RealtimeTextSegment) => segment.translatedText || '',
+    },
+  ];
+  const subtitleOverlayRows = [
+    ...(showSourceText ? sourceSubtitleRows : []),
+    ...(showTranslationText ? translationSubtitleRows : []),
+  ];
 
   const subtitleOverlayNode = showSubtitleOverlay && showSubtitleText ? (
     <div
@@ -1591,8 +1616,10 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         setShowSourceText(true);
                         setShowTranslationText(true);
                         setShowTiming(true);
-                        setVideoDelaySeconds(Math.max(videoDelaySeconds, DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS));
-                        reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
+                        const nextDelaySeconds = Math.max(videoDelaySeconds, DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+                        setVideoDelaySeconds(nextDelaySeconds);
+                        persistVideoLatencyMode('aligned');
+                        window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, nextDelaySeconds), 0);
                       }}
                       className={`rounded border px-2 py-1 transition ${
                         videoLatencyMode === 'aligned' && transcriptOpen
@@ -1649,7 +1676,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           setVideoLatencyMode('aligned');
                           setShowTranslationText(true);
                           setShowSourceText(true);
-                          reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
+                          persistVideoLatencyMode('aligned');
+                          window.setTimeout(() => retunePlaybackLatency(artPlayerRef.current, seconds), 0);
                         }}
                         className={`rounded border px-2 py-1 transition ${
                           videoDelaySeconds === seconds && videoLatencyMode === 'aligned'
@@ -1669,10 +1697,13 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         step="1"
                         value={videoDelaySeconds}
                         onChange={(event) => {
-                          setVideoDelaySeconds(Number(event.target.value));
+                          const nextDelaySeconds = Number(event.target.value);
+                          setVideoDelaySeconds(nextDelaySeconds);
                           setVideoLatencyMode('aligned');
                           setShowTranslationText(true);
                           setShowSourceText(true);
+                          persistVideoLatencyMode('aligned');
+                          retunePlaybackLatency(artPlayerRef.current, nextDelaySeconds);
                         }}
                         className="w-20"
                       />

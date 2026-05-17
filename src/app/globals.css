@@ -34,23 +34,28 @@ body {
 }
 
 .realtime-subtitle-roll {
+  container-type: inline-size;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .realtime-subtitle-roll-track {
   display: inline-block;
+  box-sizing: border-box;
   min-width: 100%;
+  width: max-content;
+  max-width: none;
+  padding-inline: 0.14em;
   transform: translateX(0);
-  animation: realtime-subtitle-roll 22s ease-in-out infinite alternate;
+  animation: realtime-subtitle-pan 18s ease-in-out infinite alternate;
   will-change: transform;
 }
 
-@keyframes realtime-subtitle-roll {
-  0%, 16% {
+@keyframes realtime-subtitle-pan {
+  0%, 18% {
     transform: translateX(0);
   }
-  84%, 100% {
-    transform: translateX(-18%);
+  82%, 100% {
+    transform: translateX(min(0px, calc(100cqw - 100%)));
   }
 }

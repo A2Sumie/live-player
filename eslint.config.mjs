@@ -18,9 +18,19 @@ const eslintConfig = [
       "node_modules/**/*",
       ".next/**/*"
     ]
+  },
+  {
+    rules: {
+      "@next/next/no-img-element": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/triple-slash-reference": "off",
+      "prefer-const": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/rules-of-hooks": "off"
+    }
   }
 ];
 
-// export default eslintConfig;
-
-export default [{}]
+export default eslintConfig;
