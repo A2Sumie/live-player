@@ -36,6 +36,9 @@ function requestLivePlayback(art: Artplayer) {
   if (!art.option.isLive) {
     return;
   }
+  if (!art.video.paused && !art.video.ended) {
+    return;
+  }
   const url = String(art.option.url || '');
   if (url === 'http://offline' || url === 'https://offline') {
     return;
@@ -378,8 +381,8 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 4;
-const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 4;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 4.5;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 4.5;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
@@ -418,7 +421,7 @@ type PlaybackTimecode = {
 
 type VideoLatencyMode = 'aligned' | 'low';
 
-const REALTIME_SETTINGS_VERSION = 7;
+const REALTIME_SETTINGS_VERSION = 8;
 
 function getUrlRealtimePreset() {
   if (typeof window === 'undefined') {
