@@ -317,8 +317,8 @@ const MARKER_COLORS = [
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
 const DEFAULT_SUBTITLE_OFFSET_SECONDS = 3;
 const SUBTITLE_OFFSET_MAX_SECONDS = 5;
-const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 10;
-const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 15;
+const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
+const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
 const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 2;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
@@ -345,7 +345,7 @@ type PlaybackTimecode = {
 type VideoLatencyMode = 'aligned' | 'low';
 
 const PLAYBACK_SEEK_THRESHOLD_SECONDS = 1.4;
-const REALTIME_SETTINGS_VERSION = 2;
+const REALTIME_SETTINGS_VERSION = 3;
 
 type StoredRealtimeSettings = {
   version?: number;
@@ -855,7 +855,6 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowTiming(false);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
     setSubtitleOpacity((value) => Math.max(value, isPortraitViewport ? 0.86 : 0.78));
-    setSubtitleScale((value) => isPortraitViewport ? Math.min(value, 0.95) : value);
     setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
     reloadHlsForLatencyMode(artPlayerRef.current, 'aligned');
     if (closeControls) {
@@ -944,7 +943,6 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowSourceText(true);
     setShowTranslationText(true);
     setShowTiming(false);
-    setSubtitleScale((value) => Math.min(value, 0.95));
     setSubtitleOpacity((value) => Math.max(value, 0.86));
   }, [isPortraitViewport, realtimeEnabled, videoLatencyMode]);
 
@@ -1413,12 +1411,12 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
               >
                 <div
                   className="max-h-[34vh] w-full max-w-[min(96%,1080px)] overflow-hidden rounded border border-white/10 bg-black/68 px-3 py-2 font-normal leading-snug text-white shadow-lg backdrop-blur-sm [overflow-wrap:anywhere] [word-break:keep-all] sm:px-4"
-                  style={{ fontSize: `${(isPortraitViewport ? 0.9 : 0.96) * subtitleScale}rem` }}
+                  style={{ fontSize: `${subtitleScale}rem` }}
                 >
-                  {showSourceText && (
-                    <div className="realtime-subtitle-roll text-left text-[0.9em]" lang="ja">
-                      <div className="realtime-subtitle-roll-track">
-                        {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                  <div className={`realtime-subtitle-roll text-left ${showSourceText ? '' : 'invisible'}`} lang="ja">
+                    <div className="realtime-subtitle-roll-track">
+                      {showSourceText ? (
+                        subtitleTextPieces.map(({ segment, color, isCurrent }) => (
                           <span
                             key={`overlay-source-${segment.id}`}
                             className={isCurrent ? 'font-bold' : 'font-light'}
@@ -1427,14 +1425,16 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                             {segment.sourceText || ''}
                             {segment.sourceText?.trim() ? <span className="text-white/20"> </span> : null}
                           </span>
-                        ))}
-                      </div>
+                        ))
+                      ) : (
+                        <span>&nbsp;</span>
+                      )}
                     </div>
-                  )}
-                  {showTranslationText && (
-                    <div className={`${showSourceText ? 'mt-1 border-t border-white/10 pt-1' : ''} realtime-subtitle-roll text-left text-[0.98em]`} lang="zh-CN">
-                      <div className="realtime-subtitle-roll-track">
-                        {subtitleTextPieces.map(({ segment, color, isCurrent }) => (
+                  </div>
+                  <div className={`mt-1 border-t border-white/10 pt-1 realtime-subtitle-roll text-left ${showTranslationText ? '' : 'invisible'}`} lang="zh-CN">
+                    <div className="realtime-subtitle-roll-track">
+                      {showTranslationText ? (
+                        subtitleTextPieces.map(({ segment, color, isCurrent }) => (
                           <span
                             key={`overlay-translation-${segment.id}`}
                             className={segment.translatedText ? (isCurrent ? 'font-bold' : 'font-light') : 'text-white/20'}
@@ -1443,10 +1443,12 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                             {segment.translatedText || ''}
                             {segment.translatedText?.trim() ? <span className="text-white/20"> </span> : null}
                           </span>
-                        ))}
-                      </div>
+                        ))
+                      ) : (
+                        <span>&nbsp;</span>
+                      )}
                     </div>
-                  )}
+                  </div>
                   {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
                     <div className="mt-1 text-[0.66em] font-medium text-white/58">
                       JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s · 采 {activeCaptureClock} · 收 {activeReceiveLag}
@@ -1559,7 +1561,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                     >
                       关字幕
                     </button>
-                    {[5, 10, 15].map((seconds) => (
+                    {[10, 15, 20].map((seconds) => (
                       <button
                         key={seconds}
                         type="button"
