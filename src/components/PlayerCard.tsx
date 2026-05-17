@@ -48,12 +48,7 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
     onDelete?.(player);
   };
 
-  const openPlayerPreset = (e: React.MouseEvent, preset: 'bilingual' | 'source' | 'low') => {
-    e.preventDefault();
-    e.stopPropagation();
-    const pid = encodeURIComponent(player.pId);
-    window.location.href = `/player/${pid}?preset=${preset}`;
-  };
+  const playerHrefBase = `/player/${encodeURIComponent(player.pId)}`;
 
   return (
     <div className="group relative">
@@ -116,27 +111,27 @@ export default function PlayerCard({ player, onEdit, onDelete }: PlayerCardProps
             )}
             {isTwentyTwoSeven && (
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={(event) => openPlayerPreset(event, 'low')}
+                <a
+                  href={`${playerHrefBase}?preset=low`}
+                  onClick={(event) => event.stopPropagation()}
                   className="rounded border border-slate-300/80 bg-white/72 px-2 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-white/90"
                 >
                   生肉
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => openPlayerPreset(event, 'source')}
+                </a>
+                <a
+                  href={`${playerHrefBase}?preset=source`}
+                  onClick={(event) => event.stopPropagation()}
                   className="rounded border border-cyan-200/80 bg-cyan-50/82 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-100/90"
                 >
                   日字
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => openPlayerPreset(event, 'bilingual')}
+                </a>
+                <a
+                  href={`${playerHrefBase}?preset=bilingual`}
+                  onClick={(event) => event.stopPropagation()}
                   className="rounded border border-emerald-200/80 bg-emerald-50/82 px-2 py-1.5 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100/90"
                 >
                   中日
-                </button>
+                </a>
               </div>
             )}
             {user?.role === 'admin' && (

@@ -396,6 +396,12 @@ function readInitialRealtimeVideoDelaySeconds() {
     }
   }
   const preset = getUrlRealtimePreset();
+  if (typeof window !== 'undefined') {
+    const delay = Number(new URLSearchParams(window.location.search).get('delay'));
+    if (Number.isFinite(delay) && delay > 0) {
+      return delay;
+    }
+  }
   if (preset?.preset === 'bilingual') {
     return DEFAULT_STABLE_VIDEO_DELAY_SECONDS;
   }
@@ -829,6 +835,10 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const sourceSubtitlePresetActive = videoLatencyMode === 'aligned' && showSourceText && !showTranslationText && !transcriptOpen;
   const bilingualPresetActive = videoLatencyMode === 'aligned' && showTranslationText && showSourceText && !transcriptOpen && videoDelaySeconds >= DEFAULT_STABLE_VIDEO_DELAY_SECONDS;
   const lowLatencyPresetActive = videoLatencyMode === 'low' && !subtitlesVisible && !transcriptOpen;
+  const playerHrefBase = `/player/${encodeURIComponent(player.pId)}`;
+  const lowLatencyHref = `${playerHrefBase}?preset=low`;
+  const sourceSubtitleHref = `${playerHrefBase}?preset=source`;
+  const bilingualSubtitleHref = `${playerHrefBase}?preset=bilingual`;
   const realtimeSettingsKey = `n2nj:realtime-text:${player.pId}`;
   const transcriptRows = realtimeSegments.map((segment) => {
     const intervalMs = realtimeConfig.cursorIntervalSeconds * 1000;
@@ -1059,6 +1069,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
       const preset = params.get('preset') || params.get('view');
       const latency = params.get('latency');
       const subtitle = params.get('subtitle');
+      const delayParam = Number(params.get('delay'));
+      const queryDelaySeconds = Number.isFinite(delayParam) && delayParam > 0 ? delayParam : null;
       const hasExplicitRealtimeView = Boolean(preset || latency || subtitle);
 
       if (raw && hasExplicitRealtimeView) {
@@ -1128,7 +1140,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowTiming(false);
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+        setVideoDelaySeconds(queryDelaySeconds || realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
       } else if (preset === 'bilingual' || preset === 'aligned' || subtitle === 'on') {
         setVideoLatencyMode('aligned');
         setShowTranslationText(true);
@@ -1136,7 +1148,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowTiming(false);
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(preset === 'bilingual' ? DEFAULT_STABLE_VIDEO_DELAY_SECONDS : realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+        setVideoDelaySeconds(queryDelaySeconds || (preset === 'bilingual' ? DEFAULT_STABLE_VIDEO_DELAY_SECONDS : realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS));
       }
     } catch (error) {
       console.warn('Realtime text settings unavailable', error);
@@ -1470,9 +1482,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
           )}
           {(realtimeEnabled || debug) && (
             <div className="mt-2 flex w-full max-w-[24rem] overflow-hidden rounded-lg border border-slate-400/50 bg-white/65 p-0.5 text-xs font-semibold shadow-sm sm:w-auto sm:max-w-none sm:text-sm">
-              <button
-                type="button"
-                onClick={() => applyLowLatencyPreset()}
+              <a
+                href={lowLatencyHref}
                 className={`min-w-0 flex-1 rounded-md px-3 py-1.5 transition ${
                   lowLatencyPresetActive
                     ? 'bg-slate-950 text-white shadow-sm'
@@ -1480,10 +1491,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                 }`}
               >
                 生肉(低延迟)
-              </button>
-              <button
-                type="button"
-                onClick={() => applySubtitlePreset()}
+              </a>
+              <a
+                href={sourceSubtitleHref}
                 className={`min-w-0 flex-1 rounded-md px-3 py-1.5 transition ${
                   sourceSubtitlePresetActive
                     ? 'bg-cyan-600 text-white shadow-sm'
@@ -1491,10 +1501,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                 }`}
               >
                 日字 -{DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS}秒
-              </button>
-              <button
-                type="button"
-                onClick={() => applyStableBilingualPreset()}
+              </a>
+              <a
+                href={bilingualSubtitleHref}
                 className={`min-w-0 flex-1 rounded-md px-3 py-1.5 transition ${
                   bilingualPresetActive
                     ? 'bg-emerald-600 text-white shadow-sm'
@@ -1502,7 +1511,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                 }`}
               >
                 中日双字 -{DEFAULT_STABLE_VIDEO_DELAY_SECONDS}秒
-              </button>
+              </a>
             </div>
           )}
           {user?.role === 'admin' && (
@@ -1623,9 +1632,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                 )}
                 {realtimeEnabled && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => applySubtitlePreset(false)}
+                    <a
+                      href={sourceSubtitleHref}
                       className={`rounded border px-2 py-1 transition ${
                         sourceSubtitlePresetActive
                           ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
@@ -1633,7 +1641,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       }`}
                     >
                       日字 -{DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS}秒
-                    </button>
+                    </a>
                     <button
                       type="button"
                       onClick={() => {
@@ -1654,9 +1662,8 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                     >
                       侧窗
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => applyLowLatencyPreset()}
+                    <a
+                      href={lowLatencyHref}
                       className={`rounded border px-2 py-1 transition ${
                         lowLatencyPresetActive
                           ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
@@ -1664,10 +1671,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       }`}
                     >
                       画面最低延迟
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyStableBilingualPreset(false)}
+                    </a>
+                    <a
+                      href={bilingualSubtitleHref}
                       className={`rounded border px-2 py-1 transition ${
                         bilingualPresetActive
                           ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
@@ -1675,7 +1681,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       }`}
                     >
                       中日双字 -{DEFAULT_STABLE_VIDEO_DELAY_SECONDS}秒
-                    </button>
+                    </a>
                     <button
                       type="button"
                       onClick={() => {
@@ -1693,16 +1699,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       关字幕
                     </button>
                     {[10, 15, 20].map((seconds) => (
-                      <button
+                      <a
                         key={seconds}
-                        type="button"
-                        onClick={() => {
-                          setVideoDelaySeconds(seconds);
-                          setVideoLatencyMode('aligned');
-                          setShowTranslationText(true);
-                          setShowSourceText(true);
-                          reloadPlayerForLatencyMode('aligned', seconds);
-                        }}
+                        href={`${playerHrefBase}?preset=bilingual&delay=${seconds}`}
                         className={`rounded border px-2 py-1 transition ${
                           videoDelaySeconds === seconds && videoLatencyMode === 'aligned'
                             ? 'border-cyan-300 bg-cyan-300/24 text-cyan-50'
@@ -1710,7 +1709,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                         }`}
                       >
                         {seconds}s
-                      </button>
+                      </a>
                     ))}
                     <label className="inline-flex items-center gap-2 border-l border-white/20 pl-2">
                       <span>画面</span>
