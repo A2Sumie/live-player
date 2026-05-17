@@ -13,10 +13,20 @@ type RealtimeEventEnvelope = {
   payload?: Record<string, unknown>;
 };
 
+type TimelineColumnValues = {
+  eventCreatedAt: string;
+  receivedAt: string;
+  asrLatencyMs: number | null;
+  eventSequence: number | null;
+  timelineMeta: string | null;
+};
+
 export type RealtimeTextTermRule = {
   from: string;
   to: string;
 };
+
+let timelineColumnsAvailable: boolean | null = null;
 
 function nowIso() {
   return new Date().toISOString();
@@ -53,7 +63,7 @@ function toJsonText(value: unknown): string | null {
 }
 
 function parseJsonText(value?: string | null): Record<string, unknown> | null {
-  if (!value) {
+  if (!value || value === 'timeline_meta') {
     return null;
   }
   try {
@@ -64,6 +74,197 @@ function parseJsonText(value?: string | null): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function safeTextColumn(value?: string | null, missingColumnLiteral?: string): string | null {
+  if (!value || value === missingColumnLiteral) {
+    return null;
+  }
+  return value;
+}
+
+function safeNumberColumn(value?: number | string | null, missingColumnLiteral?: string): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (!value || value === missingColumnLiteral) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+async function hasTimelineColumns(db: DbClient) {
+  if (timelineColumnsAvailable !== null) {
+    return timelineColumnsAvailable;
+  }
+
+  try {
+    await db.run(sql`
+      select event_created_at, received_at, asr_latency_ms, event_sequence, timeline_meta
+      from realtime_text_segments
+      limit 0
+    `);
+    timelineColumnsAvailable = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('event_created_at') && !message.includes('timeline_meta')) {
+      throw error;
+    }
+    timelineColumnsAvailable = false;
+    console.warn('Realtime text timeline columns are missing; accepting events with legacy schema fallback.');
+  }
+
+  return timelineColumnsAvailable;
+}
+
+async function insertRealtimeTextSegment(
+  db: DbClient,
+  values: {
+    pId: string;
+    streamId: string;
+    segmentId: string;
+    startMs: number;
+    endMs: number | null;
+    sourceText: string | null;
+    translatedText?: string | null;
+    language: string | null;
+    isFinal: boolean;
+    extraColumns: Partial<TimelineColumnValues>;
+    createdAt: string;
+    updatedAt: string;
+  },
+) {
+  if (await hasTimelineColumns(db)) {
+    await db.insert(realtimeTextSegments).values({
+      pId: values.pId,
+      streamId: values.streamId,
+      segmentId: values.segmentId,
+      startMs: values.startMs,
+      endMs: values.endMs,
+      sourceText: values.sourceText,
+      translatedText: values.translatedText,
+      language: values.language,
+      isFinal: values.isFinal,
+      ...values.extraColumns,
+      createdAt: values.createdAt,
+      updatedAt: values.updatedAt,
+    });
+    return;
+  }
+
+  await db.run(sql`
+    insert into realtime_text_segments (
+      p_id,
+      stream_id,
+      segment_id,
+      start_ms,
+      end_ms,
+      source_text,
+      translated_text,
+      language,
+      is_final,
+      created_at,
+      updated_at
+    ) values (
+      ${values.pId},
+      ${values.streamId},
+      ${values.segmentId},
+      ${values.startMs},
+      ${values.endMs},
+      ${values.sourceText},
+      ${values.translatedText ?? null},
+      ${values.language},
+      ${values.isFinal ? 1 : 0},
+      ${values.createdAt},
+      ${values.updatedAt}
+    )
+  `);
+}
+
+async function upsertRealtimeTextSegment(
+  db: DbClient,
+  values: {
+    pId: string;
+    streamId: string;
+    segmentId: string;
+    startMs: number;
+    endMs: number | null;
+    sourceText: string | null;
+    translatedText?: string | null;
+    language: string | null;
+    isFinal: boolean;
+    extraColumns: Partial<TimelineColumnValues>;
+    createdAt: string;
+    updatedAt: string;
+  },
+) {
+  if (await hasTimelineColumns(db)) {
+    await db.insert(realtimeTextSegments).values({
+      pId: values.pId,
+      streamId: values.streamId,
+      segmentId: values.segmentId,
+      startMs: values.startMs,
+      endMs: values.endMs,
+      sourceText: values.sourceText,
+      translatedText: values.translatedText,
+      language: values.language,
+      isFinal: values.isFinal,
+      ...values.extraColumns,
+      createdAt: values.createdAt,
+      updatedAt: values.updatedAt,
+    }).onConflictDoUpdate({
+      target: realtimeTextSegments.segmentId,
+      set: {
+        sourceText: values.sourceText,
+        translatedText: values.translatedText,
+        endMs: values.endMs,
+        language: values.language,
+        isFinal: values.isFinal,
+        ...values.extraColumns,
+        updatedAt: values.updatedAt,
+      },
+    });
+    return;
+  }
+
+  await db.run(sql`
+    insert into realtime_text_segments (
+      p_id,
+      stream_id,
+      segment_id,
+      start_ms,
+      end_ms,
+      source_text,
+      translated_text,
+      language,
+      is_final,
+      created_at,
+      updated_at
+    ) values (
+      ${values.pId},
+      ${values.streamId},
+      ${values.segmentId},
+      ${values.startMs},
+      ${values.endMs},
+      ${values.sourceText},
+      ${values.translatedText ?? null},
+      ${values.language},
+      ${values.isFinal ? 1 : 0},
+      ${values.createdAt},
+      ${values.updatedAt}
+    )
+    on conflict(segment_id) do update set
+      end_ms = excluded.end_ms,
+      source_text = excluded.source_text,
+      translated_text = excluded.translated_text,
+      language = excluded.language,
+      is_final = excluded.is_final,
+      updated_at = excluded.updated_at
+  `);
 }
 
 function applyTermRules(text: string, terms: RealtimeTextTermRule[] = []) {
@@ -87,10 +288,10 @@ function rowToSegment(row: RealtimeTextSegmentRow): RealtimeTextSegment {
     translatedText: row.translatedText,
     language: row.language,
     isFinal: row.isFinal,
-    eventCreatedAt: row.eventCreatedAt,
-    receivedAt: row.receivedAt,
-    asrLatencyMs: row.asrLatencyMs,
-    eventSequence: row.eventSequence,
+    eventCreatedAt: safeTextColumn(row.eventCreatedAt, 'event_created_at'),
+    receivedAt: safeTextColumn(row.receivedAt, 'received_at'),
+    asrLatencyMs: safeNumberColumn(row.asrLatencyMs, 'asr_latency_ms'),
+    eventSequence: safeNumberColumn(row.eventSequence, 'event_sequence'),
     timelineMeta: parseJsonText(row.timelineMeta),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -143,13 +344,13 @@ export async function ingestRealtimeTextEvent(
   const eventSequence = typeof envelope.sequence === 'number' && Number.isFinite(envelope.sequence)
     ? envelope.sequence
     : null;
-  const timelineMeta = {
+  const timelineMeta: Partial<TimelineColumnValues> = await hasTimelineColumns(db) ? {
     eventCreatedAt: createdAt,
     receivedAt: updatedAt,
     asrLatencyMs: toLatencyMs(payload),
     eventSequence,
     timelineMeta: toJsonText(payload.timeline),
-  };
+  } : {};
 
   if (eventType === 'stream.started') {
     await db
@@ -180,7 +381,7 @@ export async function ingestRealtimeTextEvent(
         .set({ sourceText, endMs, updatedAt, ...timelineMeta })
         .where(eq(realtimeTextSegments.segmentId, segmentId));
     } else {
-      await db.insert(realtimeTextSegments).values({
+      await insertRealtimeTextSegment(db, {
         pId,
         streamId,
         segmentId,
@@ -189,7 +390,7 @@ export async function ingestRealtimeTextEvent(
         sourceText,
         language: 'ja-JP',
         isFinal: false,
-        ...timelineMeta,
+        extraColumns: timelineMeta,
         createdAt,
         updatedAt,
       });
@@ -226,7 +427,7 @@ export async function ingestRealtimeTextEvent(
         })
         .where(eq(realtimeTextSegments.id, partial.id));
     } else {
-      await db.insert(realtimeTextSegments).values({
+      await insertRealtimeTextSegment(db, {
         pId,
         streamId,
         segmentId: finalId,
@@ -235,7 +436,7 @@ export async function ingestRealtimeTextEvent(
         sourceText: text,
         language: 'ja-JP',
         isFinal: true,
-        ...timelineMeta,
+        extraColumns: timelineMeta,
         createdAt,
         updatedAt,
       });
@@ -254,7 +455,7 @@ export async function ingestRealtimeTextEvent(
     const language = toText(payload.language) ?? 'ja-JP';
     const explicitSegmentId = toText(payload.segment_id) ?? toText(payload.segmentId);
     const segmentId = explicitSegmentId || `${streamId}:segment:${payload.start ?? envelope.sequence ?? Date.now()}`;
-    await db.insert(realtimeTextSegments).values({
+    await upsertRealtimeTextSegment(db, {
       pId,
       streamId,
       segmentId,
@@ -264,20 +465,9 @@ export async function ingestRealtimeTextEvent(
       translatedText,
       language,
       isFinal: payload.final !== false,
-      ...timelineMeta,
+      extraColumns: timelineMeta,
       createdAt,
       updatedAt,
-    }).onConflictDoUpdate({
-      target: realtimeTextSegments.segmentId,
-      set: {
-        sourceText: text,
-        translatedText,
-        endMs: toMs(payload.end),
-        language,
-        isFinal: payload.final !== false,
-        ...timelineMeta,
-        updatedAt,
-      },
     });
     return { accepted: true, action: 'segment', streamId, segmentId };
   }
@@ -295,6 +485,12 @@ export async function ingestRealtimeTextEvent(
       .from(realtimeTextSegments)
       .where(eq(realtimeTextSegments.segmentId, segmentId))
       .limit(1);
+    const timelineUpdate = await hasTimelineColumns(db) ? {
+      receivedAt: timelineMeta.receivedAt,
+      eventCreatedAt: timelineMeta.eventCreatedAt,
+      eventSequence: timelineMeta.eventSequence,
+      timelineMeta: timelineMeta.timelineMeta,
+    } : {};
 
     if (existing) {
       await db
@@ -302,14 +498,11 @@ export async function ingestRealtimeTextEvent(
         .set({
           translatedText,
           updatedAt,
-          receivedAt: timelineMeta.receivedAt,
-          eventCreatedAt: timelineMeta.eventCreatedAt,
-          eventSequence: timelineMeta.eventSequence,
-          timelineMeta: timelineMeta.timelineMeta,
+          ...timelineUpdate,
         })
         .where(eq(realtimeTextSegments.segmentId, segmentId));
     } else {
-      await db.insert(realtimeTextSegments).values({
+      await insertRealtimeTextSegment(db, {
         pId,
         streamId,
         segmentId,
@@ -319,7 +512,7 @@ export async function ingestRealtimeTextEvent(
         translatedText,
         language: toText(payload.language) ?? 'ja-JP',
         isFinal: true,
-        ...timelineMeta,
+        extraColumns: timelineMeta,
         createdAt,
         updatedAt,
       });
