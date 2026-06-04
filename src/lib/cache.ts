@@ -19,6 +19,7 @@ class MemoryCache {
 
     if (Date.now() > item.expiry) {
       this.cache.delete(key);
+      this.pendingPromises.delete(key);
       return null;
     }
 
@@ -81,10 +82,12 @@ export const cache = new MemoryCache();
 export const CACHE_KEYS = {
   PLAYER_LIST: 'players:list',
   PLAYER_CONFIGS: 'players:configs',
+  PLAYER_CONFIGS_VERSION: 'players:configs:version',
   PLAYER: (pId: string) => `players:${pId}`,
 } as const;
 
 export const CACHE_TTL = {
   PLAYER_LIST: 5 * 1000, // 5 seconds (Fast UI Sync without D1 DOS)
+  PLAYER_CONFIGS_VERSION: 1500, // 1.5 seconds (cheap version polling for StreamServ)
   PLAYER: 60 * 1000, // 1 minute
 } as const;

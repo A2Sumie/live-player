@@ -84,6 +84,19 @@ Based on [ArtPlayer](https://artplayer.org/)
    pnpm run db:studio
    ```
 
+## 🧪 DRM Test Notes
+
+- **Stagecrowd / Brightcove DRM validation must use the installed Google Chrome Dev browser**, not Playwright's direct Chromium launch path.
+- **Do not use `chromium.launch()` / `launchPersistentContext()` to start Chrome Dev for this case.** That path can disable or degrade Widevine support and causes false `MEDIA_ERR_ENCRYPTED` / `NotSupportedError` failures.
+- The reliable pattern is:
+  1. Launch **Google Chrome Dev itself** with a dedicated `--user-data-dir`, `--remote-debugging-port`, and the unpacked `live-player/extension`.
+  2. After Chrome Dev is fully up, attach automation via **CDP** (`connectOverCDP`) instead of letting Playwright own the browser process.
+  3. Then run the Stagecrowd page and extension capture flow.
+- If Stagecrowd suddenly shows `Unsupported keySystem or supportedConfigurations`, treat the browser launch method as the first thing to verify before touching DRM/business logic.
+- For current Brightcove/Stagecrowd traffic, extension capture must not pre-filter request handling to only `xmlhttprequest/main_frame/other`; media-originated DRM traffic also needs to be observed.
+- Brightcove tracker requests can carry `media_url=...m3u8` in their query string; they must be excluded from relay-package stream lists even though the raw URL text contains `.m3u8`.
+- The Stagecrowd relay package that actually works is the one with direct Brightcove manifest URLs plus the captured `licenses[]` entry from `license.live.brightcove.com`.
+
 ## 🌐 Deployment
 
 1. **Build and deploy to Cloudflare**

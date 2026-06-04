@@ -11,6 +11,201 @@ let detectedKeys = {}; // { tabId: [ { kid, key, session } ] }
 // Caching and monitoring state
 let cachedPageInfo = {}; // { tabId: { streams, licenses, keys, cookies, pageUrl, timestamp } }
 let monitoringState = {}; // { tabId: { enabled: bool, targetStream: null } }
+let debugEvents = []; // deduped request/debug events kept across MV3 worker restarts
+
+const CAPTURE_STATE_KEY = 'captureState.v2';
+const MAX_DEBUG_EVENTS = 50;
+const storageArea = chrome.storage.session || chrome.storage.local;
+const BYPASS_RULE_ID = 22781;
+
+async function ensureBypassHeaderRule() {
+    if (!chrome.declarativeNetRequest?.updateDynamicRules || !config.WAF_SECRET_KEY) {
+        return;
+    }
+
+    await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [BYPASS_RULE_ID],
+        addRules: [{
+            id: BYPASS_RULE_ID,
+            priority: 1,
+            action: {
+                type: 'modifyHeaders',
+                requestHeaders: [{
+                    header: 'x-bypass-waf',
+                    operation: 'set',
+                    value: config.WAF_SECRET_KEY
+                }]
+            },
+            condition: {
+                regexFilter: '^https://stream\\.n2nj\\.moe/archive-api/.*$',
+                resourceTypes: [
+                    'main_frame',
+                    'sub_frame',
+                    'xmlhttprequest',
+                    'other',
+                    'media'
+                ]
+            }
+        }]
+    });
+}
+
+function tryParseUrl(rawUrl) {
+    try {
+        return new URL(rawUrl);
+    } catch (error) {
+        return null;
+    }
+}
+
+function isManifestPathname(pathname) {
+    const normalized = String(pathname || '').toLowerCase();
+    return normalized.endsWith('.m3u8') || normalized.endsWith('.mpd');
+}
+
+function isIgnoredTrackerUrl(rawUrl) {
+    const parsed = tryParseUrl(rawUrl);
+    if (!parsed) {
+        return false;
+    }
+
+    return parsed.hostname.toLowerCase() === 'metrics.brightcove.com';
+}
+
+function isLikelyManifestUrl(rawUrl) {
+    const parsed = tryParseUrl(rawUrl);
+    if (!parsed || isIgnoredTrackerUrl(rawUrl)) {
+        return false;
+    }
+
+    return isManifestPathname(parsed.pathname);
+}
+
+function detectManifestType(rawUrl) {
+    const parsed = tryParseUrl(rawUrl);
+    if (!parsed) {
+        return null;
+    }
+
+    const pathname = parsed.pathname.toLowerCase();
+    if (pathname.endsWith('.m3u8')) return 'HLS';
+    if (pathname.endsWith('.mpd')) return 'DASH';
+    return null;
+}
+
+function normalizeCapturedStreams(streams) {
+    const filtered = (streams || []).filter((stream) => isLikelyManifestUrl(stream.url));
+    if (filtered.length > 0) {
+        return filtered;
+    }
+
+    return (streams || []).filter((stream) => !isIgnoredTrackerUrl(stream.url));
+}
+
+function serializeState() {
+    return {
+        detectedStreams,
+        detectedLicenses,
+        detectedKeys,
+        cachedPageInfo,
+        monitoringState,
+        debugEvents
+    };
+}
+
+function hydrateState(state) {
+    if (!state || typeof state !== 'object') return;
+
+    detectedStreams = state.detectedStreams || {};
+    detectedLicenses = state.detectedLicenses || {};
+    detectedKeys = state.detectedKeys || {};
+    cachedPageInfo = state.cachedPageInfo || {};
+    monitoringState = state.monitoringState || {};
+    debugEvents = Array.isArray(state.debugEvents) ? state.debugEvents : [];
+}
+
+function persistState() {
+    try {
+        storageArea.set({ [CAPTURE_STATE_KEY]: serializeState() }, () => {
+            if (chrome.runtime.lastError) {
+                console.warn('[Background] Failed to persist capture state:', chrome.runtime.lastError.message);
+            }
+        });
+    } catch (error) {
+        console.warn('[Background] Failed to persist capture state:', error);
+    }
+}
+
+function loadPersistedState() {
+    return new Promise((resolve) => {
+        try {
+            storageArea.get([CAPTURE_STATE_KEY], (result) => {
+                if (chrome.runtime.lastError) {
+                    console.warn('[Background] Failed to restore capture state:', chrome.runtime.lastError.message);
+                    resolve();
+                    return;
+                }
+
+                hydrateState(result[CAPTURE_STATE_KEY]);
+                resolve();
+            });
+        } catch (error) {
+            console.warn('[Background] Failed to restore capture state:', error);
+            resolve();
+        }
+    });
+}
+
+function rememberDebugEvent(event) {
+    const signature = [
+        event.kind || 'event',
+        event.tabId,
+        event.resourceType || '',
+        event.method || '',
+        event.url || ''
+    ].join('|');
+
+    const existingIndex = debugEvents.findIndex((item) => item.signature === signature);
+    const payload = {
+        ...event,
+        signature,
+        timestamp: Date.now()
+    };
+
+    if (existingIndex >= 0) {
+        debugEvents[existingIndex] = payload;
+    } else {
+        debugEvents.push(payload);
+        if (debugEvents.length > MAX_DEBUG_EVENTS) {
+            debugEvents = debugEvents.slice(-MAX_DEBUG_EVENTS);
+        }
+    }
+
+    persistState();
+}
+
+function resetTabState(tabId, options = {}) {
+    delete detectedStreams[tabId];
+    delete detectedLicenses[tabId];
+    delete detectedKeys[tabId];
+    delete cachedPageInfo[tabId];
+    delete monitoringState[tabId];
+    debugEvents = debugEvents.filter((item) => item.tabId !== tabId);
+    persistState();
+
+    if (options.clearBadge) {
+        chrome.action.setBadgeText({ text: "", tabId: tabId });
+    }
+}
+
+const stateReady = loadPersistedState();
+ensureBypassHeaderRule().catch((error) => console.warn('[Background] Failed to apply bypass rule:', error));
+chrome.runtime.onInstalled.addListener(() => {
+    ensureBypassHeaderRule().catch((error) => console.warn('[Background] Failed to apply bypass rule:', error));
+});
+chrome.runtime.onStartup.addListener(() => {
+    ensureBypassHeaderRule().catch((error) => console.warn('[Background] Failed to apply bypass rule:', error));
+});
 
 // --- WASM / Widevine L3 Guesser Logic ---
 var Wdsp = null;
@@ -134,44 +329,93 @@ function cleanHeaders(requestHeaders) {
     return headers;
 }
 
-// Basic M3U8 Parser
-function parseM3u8Variants(content, baseUrl) {
-    const variants = [];
+function parseHlsAttributeList(attributeLine) {
+    const attributes = {};
+    const matcher = /([A-Z0-9-]+)=("(?:[^"\\]|\\.)*"|[^,]*)/gi;
+    let match = null;
+
+    while ((match = matcher.exec(attributeLine)) !== null) {
+        let value = match[2] || '';
+        if (value.startsWith('"') && value.endsWith('"')) {
+            value = value.slice(1, -1);
+        }
+        attributes[match[1].toUpperCase()] = value;
+    }
+
+    return attributes;
+}
+
+function resolveManifestUrl(rawUrl, baseUrl) {
+    try {
+        return new URL(rawUrl, baseUrl).toString();
+    } catch (_error) {
+        return rawUrl;
+    }
+}
+
+// Parse both variants and referenced renditions so separate audio can be surfaced
+// even before the browser fetches the audio playlist itself.
+function parseHlsManifest(content, baseUrl) {
     const lines = content.split('\n');
-    let currentInfo = {};
+    const variants = [];
+    const audioTracks = [];
+    let pendingVariant = null;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (line.startsWith('#EXT-X-STREAM-INF:')) {
-            // Parse attributes
-            const bandwidthMatch = line.match(/BANDWIDTH=(\d+)/);
-            const resolutionMatch = line.match(/RESOLUTION=(\d+x\d+)/);
-
-            currentInfo = {
-                bandwidth: bandwidthMatch ? parseInt(bandwidthMatch[1]) : 0,
-                resolution: resolutionMatch ? resolutionMatch[1] : 'Unknown',
-            };
-        } else if (line.startsWith('#') || line === '') {
+        if (!line) {
             continue;
-        } else {
-            // URL line
-            if (currentInfo.bandwidth || currentInfo.resolution) {
-                let url = line;
-                if (!url.startsWith('http')) {
-                    // Resolve relative URL
-                    const baseParts = baseUrl.split('/');
-                    baseParts.pop(); // Remove filename
-                    url = baseParts.join('/') + '/' + url;
-                }
-                variants.push({
-                    url: url,
-                    ...currentInfo
+        }
+
+        if (line.startsWith('#EXT-X-MEDIA:')) {
+            const attrs = parseHlsAttributeList(line.slice('#EXT-X-MEDIA:'.length));
+            if ((attrs.TYPE || '').toUpperCase() === 'AUDIO') {
+                audioTracks.push({
+                    url: attrs.URI ? resolveManifestUrl(attrs.URI, baseUrl) : null,
+                    group_id: attrs['GROUP-ID'] || null,
+                    name: attrs.NAME || null,
+                    language: attrs.LANGUAGE || null,
+                    channels: attrs.CHANNELS || null,
+                    autoselect: attrs.AUTOSELECT === 'YES',
+                    default: attrs.DEFAULT === 'YES'
                 });
-                currentInfo = {}; // Reset
             }
+            continue;
+        }
+
+        if (line.startsWith('#EXT-X-STREAM-INF:')) {
+            const attrs = parseHlsAttributeList(line.slice('#EXT-X-STREAM-INF:'.length));
+            pendingVariant = {
+                bandwidth: attrs.BANDWIDTH ? parseInt(attrs.BANDWIDTH, 10) : 0,
+                resolution: attrs.RESOLUTION || 'Unknown',
+                codecs: attrs.CODECS || '',
+                audio_group: attrs.AUDIO || null
+            };
+            continue;
+        }
+
+        if (line.startsWith('#')) {
+            continue;
+        }
+
+        if (pendingVariant) {
+            variants.push({
+                url: resolveManifestUrl(line, baseUrl),
+                ...pendingVariant
+            });
+            pendingVariant = null;
         }
     }
-    return variants.sort((a, b) => b.bandwidth - a.bandwidth);
+
+    return {
+        variants: variants.sort((a, b) => b.bandwidth - a.bandwidth),
+        audio_tracks: audioTracks.filter((track, index, allTracks) => {
+            const signature = [track.url, track.group_id, track.name, track.language].join('|');
+            return allTracks.findIndex((candidate) => {
+                return [candidate.url, candidate.group_id, candidate.name, candidate.language].join('|') === signature;
+            }) === index;
+        })
+    };
 }
 
 // Analyze M3U8/MPD stream and extract PSSH if available
@@ -196,14 +440,18 @@ async function analyzeM3u8(url, headers) {
         };
 
         // Basic HLS analysis
-        if (url.includes('.m3u8')) {
+        if (detectManifestType(url) === 'HLS') {
             info.encrypted = text.includes('#EXT-X-KEY');
-            info.variants = parseM3u8Variants(text, url);
+            const parsedManifest = parseHlsManifest(text, url);
+            info.variants = parsedManifest.variants;
             info.variants_count = info.variants.length;
+            info.audio_tracks = parsedManifest.audio_tracks;
+            info.audio_track_count = parsedManifest.audio_tracks.length;
+            info.has_audio_renditions = parsedManifest.audio_tracks.length > 0;
         }
 
         // Basic DASH analysis with PSSH extraction
-        if (url.includes('.mpd')) {
+        if (detectManifestType(url) === 'DASH') {
             info.variants_count = (text.match(/<Representation/g) || []).length;
             info.encrypted = text.includes('ContentProtection') || text.includes('cenc:default_KID');
 
@@ -254,7 +502,9 @@ function buildComprehensiveDRM(stream, license, pageUrl) {
 
 // Build page-level comprehensive DRM package (all streams + all licenses + cookies + KEYS)
 async function buildPageLevelDRM(tabId, pageUrl) {
-    const streams = detectedStreams[tabId] || [];
+    await stateReady;
+
+    const streams = normalizeCapturedStreams(detectedStreams[tabId] || []);
     const licenses = detectedLicenses[tabId] || [];
     const keys = detectedKeys[tabId] || [];
 
@@ -315,73 +565,81 @@ async function buildPageLevelDRM(tabId, pageUrl) {
 // Listener
 chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
-        if (details.type === 'xmlhttprequest' || details.type === 'main_frame' || details.type === 'other') {
-            const url = details.url;
-            const tabId = details.tabId;
-            if (tabId === -1) return;
+        const url = details.url;
+        const tabId = details.tabId;
 
-            // Initialize storage
-            if (!detectedStreams[tabId]) detectedStreams[tabId] = [];
-            if (!detectedLicenses[tabId]) detectedLicenses[tabId] = [];
-            if (!detectedKeys[tabId]) detectedKeys[tabId] = [];
+        let isLicense = false;
+        if ((url.includes('license') || url.includes('widevine') || url.includes('drm')) && details.method === 'POST') {
+            isLicense = true;
+        }
 
-            const headers = cleanHeaders(details.requestHeaders);
+        const type = detectManifestType(url);
 
-            // KEYBOARD: Detect License Requests
-            let isLicense = false;
-            // Common keywords
-            if ((url.includes('license') || url.includes('widevine') || url.includes('drm')) && details.method === 'POST') {
-                isLicense = true;
+        if (isLicense || type) {
+            rememberDebugEvent({
+                kind: isLicense ? 'license' : 'stream',
+                tabId,
+                resourceType: details.type,
+                method: details.method,
+                skipped: tabId === -1,
+                url
+            });
+        }
+
+        if (tabId === -1) return;
+
+        // Initialize storage
+        if (!detectedStreams[tabId]) detectedStreams[tabId] = [];
+        if (!detectedLicenses[tabId]) detectedLicenses[tabId] = [];
+        if (!detectedKeys[tabId]) detectedKeys[tabId] = [];
+
+        const headers = cleanHeaders(details.requestHeaders);
+
+        if (isLicense) {
+            console.log("Captured License Request:", url);
+            const licObj = {
+                type: 'LICENSE',
+                url: url,
+                headers: headers,
+                timestamp: Date.now()
+            };
+            // Dedupe licenses
+            if (!detectedLicenses[tabId].find(l => l.url === url)) {
+                detectedLicenses[tabId].push(licObj);
+                persistState();
+
+                // Visual Indicator
+                chrome.action.setBadgeText({ text: "DRM", tabId: tabId });
+                chrome.action.setBadgeBackgroundColor({ color: '#d9534f', tabId: tabId });
             }
+            return;
+        }
 
-            if (isLicense) {
-                console.log("Captured License Request:", url);
-                const licObj = {
-                    type: 'LICENSE',
+        if (type) {
+            // Deduplicate simple
+            const exists = detectedStreams[tabId].find(s => s.url === url);
+            if (!exists) {
+                const streamObj = {
+                    type: type,
                     url: url,
                     headers: headers,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    mediaInfo: null // To be filled
                 };
-                // Dedupe licenses
-                if (!detectedLicenses[tabId].find(l => l.url === url)) {
-                    detectedLicenses[tabId].push(licObj);
 
-                    // Visual Indicator
-                    chrome.action.setBadgeText({ text: "DRM", tabId: tabId });
-                    chrome.action.setBadgeBackgroundColor({ color: '#d9534f', tabId: tabId });
-                }
-                return;
-            }
+                detectedStreams[tabId].push(streamObj);
+                persistState();
 
-            // Check for .m3u8 or .mpd
-            let type = null;
-            if (url.includes('.m3u8')) type = 'HLS';
-            if (url.includes('.mpd')) type = 'DASH';
+                // Trigger analysis
+                analyzeM3u8(url, headers).then(info => {
+                    streamObj.mediaInfo = info;
+                    persistState();
+                });
 
-            if (type) {
-                // Deduplicate simple
-                const exists = detectedStreams[tabId].find(s => s.url === url);
-                if (!exists) {
-                    const streamObj = {
-                        type: type,
-                        url: url,
-                        headers: headers,
-                        timestamp: Date.now(),
-                        mediaInfo: null // To be filled
-                    };
-
-                    detectedStreams[tabId].push(streamObj);
-
-                    // Trigger analysis
-                    analyzeM3u8(url, headers).then(info => {
-                        streamObj.mediaInfo = info;
-                    });
-
-                    // Update badge
-                    const count = detectedStreams[tabId].filter(s => s.type !== 'LICENSE').length;
-                    chrome.action.setBadgeText({ text: String(count), tabId: tabId });
-                    chrome.action.setBadgeBackgroundColor({ color: '#28a745', tabId: tabId });
-                }
+                // Update badge
+                const count = normalizeCapturedStreams(detectedStreams[tabId]).length;
+                chrome.action.setBadgeText({ text: String(count), tabId: tabId });
+                chrome.action.setBadgeBackgroundColor({ color: '#28a745', tabId: tabId });
             }
         }
     },
@@ -422,6 +680,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (!detectedKeys[tabId].find(k => k.kid === request.data.kid)) {
                 console.log("🔑 [Background] Stored Widevine Key:", request.data);
                 detectedKeys[tabId].push(request.data);
+                persistState();
 
                 // Update badge to Purple for Keys to indicate success!
                 chrome.action.setBadgeText({ text: "KEY", tabId: tabId });
@@ -436,35 +695,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'getStreams') {
         const tabId = request.tabId;
-        sendResponse({
-            streams: detectedStreams[tabId] || [],
-            licenses: detectedLicenses[tabId] || [],
-            keys: detectedKeys[tabId] || []
+        stateReady.then(() => {
+            sendResponse({
+                streams: normalizeCapturedStreams(detectedStreams[tabId] || []),
+                licenses: detectedLicenses[tabId] || [],
+                keys: detectedKeys[tabId] || []
+            });
         });
-        return true; // async
+        return true;
     }
 
     // Legacy: getDRMPackage (single stream)
     if (request.action === 'getDRMPackage') {
-        const tabId = request.tabId;
-        const streamIndex = request.streamIndex;
-        const streams = detectedStreams[tabId] || [];
-        const licenses = detectedLicenses[tabId] || [];
+        stateReady.then(() => {
+            const tabId = request.tabId;
+            const streamIndex = request.streamIndex;
+            const streams = normalizeCapturedStreams(detectedStreams[tabId] || []);
+            const licenses = detectedLicenses[tabId] || [];
 
-        if (streamIndex < streams.length) {
-            const stream = streams[streamIndex];
-            const license = licenses.length > 0 ? licenses[licenses.length - 1] : null;
-            const pkg = buildComprehensiveDRM(stream, license, request.pageUrl);
+            if (streamIndex < streams.length) {
+                const stream = streams[streamIndex];
+                const license = licenses.length > 0 ? licenses[licenses.length - 1] : null;
+                const pkg = buildComprehensiveDRM(stream, license, request.pageUrl);
 
-            // Attach keys if any
-            if (detectedKeys[tabId] && detectedKeys[tabId].length > 0) {
-                pkg.keys = detectedKeys[tabId];
+                // Attach keys if any
+                if (detectedKeys[tabId] && detectedKeys[tabId].length > 0) {
+                    pkg.keys = detectedKeys[tabId];
+                }
+
+                sendResponse({ package: pkg });
+            } else {
+                sendResponse({ error: 'Stream not found' });
             }
-
-            sendResponse({ package: pkg });
-        } else {
-            sendResponse({ error: 'Stream not found' });
-        }
+        });
         return true;
     }
 
@@ -483,6 +746,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const tabId = request.tabId;
         buildPageLevelDRM(tabId, request.pageUrl).then(pkg => {
             cachedPageInfo[tabId] = pkg;
+            persistState();
             sendResponse({ success: true, cached: pkg });
         }).catch(err => {
             sendResponse({ error: err.message });
@@ -493,43 +757,54 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'enableMonitoring') {
         const tabId = request.tabId;
         monitoringState[tabId] = { enabled: true, targetStream: null };
+        persistState();
         sendResponse({ success: true });
         return true;
     }
 
     if (request.action === 'getCachedDRM') {
         const tabId = request.tabId;
-        if (cachedPageInfo[tabId]) {
-            sendResponse({ package: cachedPageInfo[tabId] });
-        } else {
-            sendResponse({ error: 'No cached data' });
-        }
+        stateReady.then(() => {
+            if (cachedPageInfo[tabId]) {
+                sendResponse({ package: cachedPageInfo[tabId] });
+            } else {
+                sendResponse({ error: 'No cached data' });
+            }
+        });
+        return true;
+    }
+
+    if (request.action === 'getDebugState') {
+        stateReady.then(() => {
+            sendResponse({
+                tabs: {
+                    streams: Object.fromEntries(
+                        Object.entries(detectedStreams).map(([tabId, items]) => [tabId, items.length])
+                    ),
+                    licenses: Object.fromEntries(
+                        Object.entries(detectedLicenses).map(([tabId, items]) => [tabId, items.length])
+                    ),
+                    keys: Object.fromEntries(
+                        Object.entries(detectedKeys).map(([tabId, items]) => [tabId, items.length])
+                    ),
+                    cached: Object.keys(cachedPageInfo),
+                    monitoring: Object.keys(monitoringState),
+                },
+                debugEvents
+            });
+        });
         return true;
     }
 });
 
 // Clean up on tab close
 chrome.tabs.onRemoved.addListener((tabId) => {
-    delete detectedStreams[tabId];
-    delete detectedLicenses[tabId];
-    delete detectedKeys[tabId];
-    delete cachedPageInfo[tabId];
-    delete monitoringState[tabId];
+    resetTabState(tabId);
 });
 
 // Clean up on navigation (refresh/new page in same tab)
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
     if (details.frameId === 0) { // Main frame only
-        const tabId = details.tabId;
-        delete detectedStreams[tabId];
-        delete detectedLicenses[tabId];
-        delete detectedKeys[tabId];
-        delete cachedPageInfo[tabId];
-        // Don't necessarily delete monitoringState if we want it ensuring across navs? 
-        // usually safer to reset to avoid confusion.
-        delete monitoringState[tabId];
-
-        // Reset badge
-        chrome.action.setBadgeText({ text: "", tabId: tabId });
+        resetTabState(details.tabId, { clearBadge: true });
     }
 });

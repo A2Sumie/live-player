@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getPlayerViewByPid, invalidatePlayerCaches, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
+import { oversizedBodyResponse, readJsonBodyWithLimit } from '@/lib/request-security';
 import { serializeStreamConfig } from '@/lib/stream-config';
 
 export const dynamic = 'force-dynamic';
 
+const RUNTIME_PATCH_BODY_LIMIT_BYTES = 64 * 1024;
+
 export async function GET(request: NextRequest, context: { params: Promise<{ pid: string }> }) {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Permission denied' },
+        { status: 403 }
+      );
+    }
+
     const params = await context.params;
     const pId = params.pid;
 
@@ -45,7 +56,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
       return NextResponse.json({ error: 'Player ID required' }, { status: 400 });
     }
 
-    const body = await request.json() as any;
+    const body = await readJsonBodyWithLimit<any>(request, RUNTIME_PATCH_BODY_LIMIT_BYTES);
     const runtimeUpdate: Record<string, string | null> = {};
 
     if (body.url !== undefined) runtimeUpdate.url = body.url ?? null;
@@ -82,6 +93,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ p
     const { coverImage, ...playerWithoutImage } = updatedPlayer;
     return NextResponse.json(playerWithoutImage);
   } catch (error) {
+    const bodyError = oversizedBodyResponse(error);
+    if (bodyError) {
+      return bodyError;
+    }
+
     console.error('Error patching runtime player by pId:', error);
     return NextResponse.json({ error: 'Failed to patch runtime player' }, { status: 500 });
   }

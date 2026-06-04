@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 400px; padding: 16px; font-family: sans-serif; }
+    body { width: 420px; padding: 16px; font-family: sans-serif; }
     h2 { margin-top: 0; font-size: 16px; }
+    .section { margin-bottom: 16px; }
     button {
       width: 100%;
       padding: 8px;
@@ -26,7 +27,31 @@
       border-radius: 4px;
       resize: vertical;
     }
-    .status { font-size: 12px; color: #666; text-align: right; }
+    .status-banner {
+      display: none;
+      margin: 10px 0 12px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      border: 1px solid transparent;
+    }
+    .status-banner[data-visible="true"] { display: block; }
+    .status-banner.info {
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .status-banner.success {
+      background: #ecfdf5;
+      border-color: #86efac;
+      color: #15803d;
+    }
+    .status-banner.error {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: #b91c1c;
+    }
     #openDashboard { background: #6f42c1; }
     #openDashboard:hover { background: #5a32a3; }
     .secondary { background: #0d6efd; }
@@ -35,18 +60,51 @@
     .tertiary:hover { background: #157347; }
     .muted { background: #6c757d; }
     .muted:hover { background: #5c636a; }
+    .field { margin-bottom: 10px; }
+    .field label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .field input[type="text"],
+    .field input[type="file"] {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    .hint {
+      margin: -2px 0 10px;
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
-  <h2>Relay Dashboard</h2>
-  <button id="openDashboard">🖥️ Open tv.n2nj.moe</button>
+  <div class="section">
+    <h2>Relay Package</h2>
+    <button id="sendRelay" class="tertiary">Send To Relay Channel</button>
+    <button id="copyRelayPackage" class="secondary">Copy Full Relay Package</button>
+    <div class="field">
+      <label for="relayTitle">Relay 标题</label>
+      <input id="relayTitle" type="text" placeholder="默认使用当前页面标题" />
+    </div>
+    <div class="status-banner info" id="status" data-visible="false"></div>
+  </div>
 
-  <h2>Relay Package</h2>
-  <button id="copyRelayPackage" class="secondary">Copy Full Relay Package</button>
-  <button id="sendRelay" class="tertiary">Send To Relay Channel</button>
+  <div class="section">
+    <h2>Relay Dashboard</h2>
+    <button id="openDashboard">🖥️ Open tv.n2nj.moe</button>
+  </div>
+
   <button id="capture" class="muted">Force Page Headers</button>
   <textarea id="output" placeholder="Result will appear here..."></textarea>
-  <div class="status" id="status"></div>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

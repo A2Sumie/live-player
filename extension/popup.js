@@ -11,14 +11,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     const output = document.getElementById('output');
     const copyRelayPackageButton = document.getElementById('copyRelayPackage');
     const sendRelayButton = document.getElementById('sendRelay');
+    const relayTitleInput = document.getElementById('relayTitle');
 
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;
 
+    if (relayTitleInput) {
+        relayTitleInput.value = tab.title || 'Relay';
+    }
+
+    const setStatus = (message, type = 'info') => {
+        if (!status) {
+            return;
+        }
+        status.textContent = message || '';
+        status.className = `status-banner ${type}`.trim();
+        status.dataset.visible = message ? 'true' : 'false';
+    };
+
     const sendMessage = (message) => new Promise((resolve) => {
         chrome.runtime.sendMessage(message, (response) => resolve(response || {}));
     });
+
+    const buildApiHeaders = (headers = {}) => {
+        const nextHeaders = {
+            ...headers
+        };
+
+        if (config.WAF_SECRET_KEY) {
+            nextHeaders['x-bypass-waf'] = config.WAF_SECRET_KEY;
+        }
+
+        return nextHeaders;
+    };
 
     const relayState = {
         streams: [],
@@ -26,8 +52,274 @@ document.addEventListener('DOMContentLoaded', async () => {
         pagePackage: null
     };
 
+    const refreshRelayState = async () => {
+        const [streamResponse, pagePackageResponse] = await Promise.all([
+            sendMessage({ action: 'getStreams', tabId: tab.id }),
+            sendMessage({ action: 'getPageDRMPackage', tabId: tab.id, pageUrl: tab.url })
+        ]);
+
+        const streams = normalizeCapturedStreams(streamResponse.streams || []);
+        const licenses = normalizeLicenses(streamResponse.licenses || []);
+        relayState.streams = streams;
+        relayState.licenses = licenses;
+        relayState.pagePackage = buildSanitizedPagePackage(pagePackageResponse.package || null);
+        return relayState.pagePackage;
+    };
+
+    const tryParseUrl = (rawUrl) => {
+        try {
+            return new URL(rawUrl);
+        } catch (_error) {
+            return null;
+        }
+    };
+
+    const isIgnoredTrackerUrl = (rawUrl) => {
+        const parsed = tryParseUrl(rawUrl);
+        if (!parsed) {
+            return false;
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+        if (hostname === 'metrics.brightcove.com') {
+            return true;
+        }
+
+        const pathname = parsed.pathname.toLowerCase();
+        return pathname.includes('/v2/tracker');
+    };
+
+    const isManifestPathname = (pathname) => {
+        const normalized = String(pathname || '').toLowerCase();
+        return normalized.endsWith('.m3u8') || normalized.endsWith('.mpd');
+    };
+
+    const isLikelyManifestUrl = (rawUrl) => {
+        const parsed = tryParseUrl(rawUrl);
+        if (!parsed || isIgnoredTrackerUrl(rawUrl)) {
+            return false;
+        }
+
+        return isManifestPathname(parsed.pathname);
+    };
+
+    const dedupeBy = (items, getKey) => {
+        const seen = new Set();
+        const deduped = [];
+
+        for (const item of items || []) {
+            const key = String(getKey(item) || '').trim();
+            if (!key || seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            deduped.push(item);
+        }
+
+        return deduped;
+    };
+
+    const normalizeCapturedStreams = (streams) => {
+        const normalizedStreams = (streams || []).map((stream) => ({
+            url: stream.url || stream.source || '',
+            type: stream.type || 'HLS',
+            headers: stream.headers || {},
+            mediaInfo: stream.mediaInfo || null
+        })).filter((stream) => stream.url);
+
+        const manifestStreams = normalizedStreams.filter((stream) => isLikelyManifestUrl(stream.url));
+        const filtered = manifestStreams.length > 0
+            ? manifestStreams
+            : normalizedStreams.filter((stream) => !isIgnoredTrackerUrl(stream.url));
+
+        return dedupeBy(filtered, (stream) => stream.url);
+    };
+
+    const normalizeLicenses = (licenses) => dedupeBy(
+        (licenses || []).filter((license) => license && license.url),
+        (license) => license.url
+    );
+
+    const normalizeKeys = (keys) => dedupeBy(
+        (keys || []).filter((key) => key && (key.kid || key.key)),
+        (key) => `${key.kid || ''}:${key.key || ''}`
+    );
+
+    const decodeCookiesHeader = (cookiesB64) => {
+        if (!cookiesB64 || typeof cookiesB64 !== 'string') {
+            return '';
+        }
+
+        try {
+            const cookieJson = atob(cookiesB64);
+            const cookieDict = JSON.parse(cookieJson);
+            if (!cookieDict || typeof cookieDict !== 'object') {
+                return '';
+            }
+
+            return Object.entries(cookieDict)
+                .filter(([name, value]) => {
+                    const normalized = String(name || '').toLowerCase();
+                    return normalized && !normalized.includes('experiment') && value !== undefined && value !== null;
+                })
+                .map(([name, value]) => `${name}=${value}`)
+                .join('; ');
+        } catch (_error) {
+            return '';
+        }
+    };
+
+    const sanitizeHeaders = (headers = {}, options = {}) => {
+        const includeCookie = options.includeCookie !== false;
+        const nextHeaders = {};
+
+        for (const [name, value] of Object.entries(headers || {})) {
+            const normalizedName = String(name || '').trim();
+            const normalizedValue = typeof value === 'string' ? value.trim() : '';
+            if (!normalizedName || !normalizedValue) {
+                continue;
+            }
+
+            const lowerName = normalizedName.toLowerCase();
+            if (lowerName === 'cookie' && !includeCookie) {
+                continue;
+            }
+
+            if ([
+                'user-agent',
+                'referer',
+                'origin',
+                'cookie',
+                'authorization',
+                'x-requested-with',
+                'accept',
+                'accept-language',
+                'content-type',
+                'sec-ch-ua',
+                'sec-ch-ua-mobile',
+                'sec-ch-ua-platform',
+                'sec-fetch-dest',
+                'sec-fetch-mode',
+                'sec-fetch-site',
+                'x-license-url',
+                'x-drm-key',
+            ].includes(lowerName)) {
+                nextHeaders[normalizedName] = normalizedValue;
+            }
+        }
+
+        return nextHeaders;
+    };
+
+    const trimMediaInfo = (mediaInfo) => {
+        if (!mediaInfo || typeof mediaInfo !== 'object') {
+            return null;
+        }
+
+        const trimmed = {};
+        if (typeof mediaInfo.variants_count === 'number') {
+            trimmed.variants_count = mediaInfo.variants_count;
+        } else if (Array.isArray(mediaInfo.variants)) {
+            trimmed.variants_count = mediaInfo.variants.length;
+        }
+        if (typeof mediaInfo.pssh === 'string' && mediaInfo.pssh.trim()) {
+            trimmed.pssh = mediaInfo.pssh.trim();
+        }
+        if (typeof mediaInfo.bandwidth === 'number') {
+            trimmed.bandwidth = mediaInfo.bandwidth;
+        }
+        if (typeof mediaInfo.resolution === 'string' && mediaInfo.resolution.trim()) {
+            trimmed.resolution = mediaInfo.resolution.trim();
+        }
+        if (mediaInfo.has_audio_renditions) {
+            trimmed.has_audio_renditions = true;
+        }
+        if (typeof mediaInfo.audio_track_count === 'number') {
+            trimmed.audio_track_count = mediaInfo.audio_track_count;
+        }
+        if (Array.isArray(mediaInfo.audio_tracks) && mediaInfo.audio_tracks.length > 0) {
+            trimmed.audio_tracks = mediaInfo.audio_tracks
+                .filter((track) => track && track.url)
+                .slice(0, 4)
+                .map((track) => ({
+                    url: track.url,
+                    group_id: track.group_id || null,
+                    name: track.name || null,
+                    language: track.language || null,
+                    channels: track.channels || null,
+                    autoselect: Boolean(track.autoselect),
+                    default: Boolean(track.default)
+                }));
+        }
+        return Object.keys(trimmed).length > 0 ? trimmed : null;
+    };
+
+    const selectPrimaryStream = (streams) => {
+        for (const stream of streams) {
+            const mediaInfo = stream.mediaInfo || {};
+            const variantsCount = mediaInfo.variants_count || (Array.isArray(mediaInfo.variants) ? mediaInfo.variants.length : 0);
+            if ((stream.url && stream.url.includes('playlist')) || variantsCount > 0) {
+                return stream;
+            }
+        }
+
+        return streams[0] || null;
+    };
+
+    const buildSanitizedPagePackage = (rawPackage) => {
+        const streams = normalizeCapturedStreams(rawPackage?.streams || relayState.streams || []);
+        const primaryStream = selectPrimaryStream(streams);
+        const cookieHeader = decodeCookiesHeader(rawPackage?.cookies_b64);
+        const primaryHeaders = sanitizeHeaders(primaryStream ? (primaryStream.headers || {}) : (rawPackage?.headers || {}));
+        if (cookieHeader && !primaryHeaders.Cookie && !primaryHeaders.cookie) {
+            primaryHeaders.Cookie = cookieHeader;
+        }
+        const relayStreams = streams.map((stream) => {
+            const streamHeaders = sanitizeHeaders(stream.headers || {});
+            if (cookieHeader && !streamHeaders.Cookie && !streamHeaders.cookie) {
+                streamHeaders.Cookie = cookieHeader;
+            }
+            return {
+                source: stream.url,
+                type: stream.type,
+                headers: streamHeaders,
+                mediaInfo: trimMediaInfo(stream.mediaInfo)
+            };
+        });
+
+        const relayLicenses = normalizeLicenses(rawPackage?.licenses || relayState.licenses || [])
+            .slice(0, 2)
+            .map((license) => {
+                const licenseHeaders = sanitizeHeaders(license.headers || {});
+                if (cookieHeader && !licenseHeaders.Cookie && !licenseHeaders.cookie) {
+                    licenseHeaders.Cookie = cookieHeader;
+                }
+                return {
+                    url: license.url,
+                    headers: licenseHeaders,
+                    timestamp: license.timestamp
+                };
+            });
+
+        return {
+            mode: 'echo',
+            page_url: tab.url,
+            source: primaryStream ? primaryStream.url : (rawPackage?.source || ''),
+            headers: primaryHeaders,
+            timestamp: rawPackage?.timestamp || Date.now(),
+            streams_detected: streams.length,
+            streams: relayStreams,
+            licenses: relayLicenses,
+            keys: normalizeKeys(rawPackage?.keys || []).slice(0, 8).map((key) => ({
+                kid: key.kid || '',
+                key: key.key || '',
+                session: key.session || null
+            }))
+        };
+    };
+
     const buildRelayPayload = (selectedUrl, selectedHeaders, label) => {
-        const pagePackage = relayState.pagePackage || {};
+        const pagePackage = buildSanitizedPagePackage(relayState.pagePackage);
         const payload = {
             ...pagePackage,
             mode: 'echo',
@@ -40,20 +332,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         return payload;
     };
 
+    const buildRelayMetadata = (relayTitle) => ({
+        title: relayTitle,
+        description: tab.url
+    });
+
+    const buildRelayWorkerStub = (relayPayload) => ({
+        mode: 'echo',
+        page_url: relayPayload.page_url || tab.url,
+        source: relayPayload.source || '',
+        note: relayPayload.note || null,
+        timestamp: relayPayload.timestamp || Date.now(),
+        relay_override: true,
+        relay_override_updated_at: Date.now(),
+        streams_detected: relayPayload.streams_detected || 0,
+        streams: (relayPayload.streams || []).slice(0, 1).map((stream) => ({
+            source: stream.source,
+            type: stream.type,
+            mediaInfo: trimMediaInfo(stream.mediaInfo)
+        })),
+        headers: {},
+        licenses: [],
+        keys: []
+    });
+
+    const syncRelayConfigToStreamServ = async (relayPayload, metadata) => {
+        const response = await fetch(`${config.STREAMSERV_API_BASE_URL}/archive-api/relay-config`, {
+            method: 'POST',
+            headers: buildApiHeaders({
+                'Content-Type': 'application/json',
+            }),
+            body: JSON.stringify({
+                pid: 'relay',
+                action: 'start',
+                streamConfig: relayPayload,
+                metadata,
+            }),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`StreamServ relay sync failed: ${response.status} ${text}`);
+        }
+
+        return response.json();
+    };
+
     const copyRelayPayload = (selectedUrl, selectedHeaders, label) => {
         buildRelayPayload(selectedUrl, selectedHeaders, label);
         output.select();
         document.execCommand('copy');
-        status.textContent = `📋 Copied relay package: ${label}`;
+        setStatus(`📋 Copied relay package: ${label}`, 'info');
     };
 
     const loginAdmin = async () => {
         const response = await fetch(`${config.API_BASE_URL}/api/auth/login`, {
             method: 'POST',
             credentials: 'include',
-            headers: {
+            headers: buildApiHeaders({
                 'Content-Type': 'application/json'
-            },
+            }),
             body: JSON.stringify({
                 username: config.ADMIN_USER,
                 password: config.ADMIN_PASS
@@ -66,24 +404,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const sendRelayPayload = async (selectedUrl, selectedHeaders, label) => {
         const relayPayload = buildRelayPayload(selectedUrl, selectedHeaders, label);
-        status.textContent = 'Sending relay package...';
+        const relayTitle = relayTitleInput?.value?.trim() || tab.title || 'Relay';
+        const relayMetadata = buildRelayMetadata(relayTitle);
+        const relayWorkerStub = buildRelayWorkerStub(relayPayload);
+
+        setStatus('Syncing relay package to StreamServ...', 'info');
+        await syncRelayConfigToStreamServ(relayPayload, relayMetadata);
+
+        setStatus('Relay package synced. Updating dashboard...', 'info');
 
         await loginAdmin();
 
         const response = await fetch(`${config.API_BASE_URL}/api/players/relay/relay`, {
             method: 'POST',
             credentials: 'include',
-            headers: {
+            headers: buildApiHeaders({
                 'Content-Type': 'application/json',
-            },
+            }),
             body: JSON.stringify({
                 action: 'start',
-                streamConfig: relayPayload,
-                metadata: {
-                    title: tab.title || 'Relay',
-                    description: tab.url,
-                    coverUrl: tab.favIconUrl || null
-                }
+                streamConfig: relayWorkerStub,
+                metadata: relayMetadata
             })
         });
 
@@ -92,39 +433,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error(`Relay sync failed: ${response.status} ${text}`);
         }
 
-        status.textContent = `✅ Relay synced: ${label}`;
+        await response.json();
+        setStatus(`✅ Relay synced: ${label}`, 'success');
     };
 
-    copyRelayPackageButton.addEventListener('click', () => {
+    copyRelayPackageButton.addEventListener('click', async () => {
+        await refreshRelayState();
         if (!relayState.pagePackage) {
-            status.textContent = 'No DRM relay package available yet.';
+            setStatus('No DRM relay package available yet.', 'error');
             return;
         }
         copyRelayPayload(null, null, 'Full Page Package');
     });
 
     sendRelayButton.addEventListener('click', async () => {
+        await refreshRelayState();
         if (!relayState.pagePackage) {
-            status.textContent = 'No DRM relay package available yet.';
+            setStatus('No DRM relay package available yet.', 'error');
             return;
         }
         try {
             await sendRelayPayload(null, null, 'Full Page Package');
         } catch (error) {
-            status.textContent = error instanceof Error ? error.message : 'Relay sync failed';
+            setStatus(error instanceof Error ? error.message : 'Relay sync failed', 'error');
         }
     });
 
-    const [streamResponse, pagePackageResponse] = await Promise.all([
-        sendMessage({ action: 'getStreams', tabId: tab.id }),
-        sendMessage({ action: 'getPageDRMPackage', tabId: tab.id, pageUrl: tab.url })
-    ]);
-
-    const streams = streamResponse.streams || [];
-    const licenses = streamResponse.licenses || [];
-    relayState.streams = streams;
-    relayState.licenses = licenses;
-    relayState.pagePackage = pagePackageResponse.package || null;
+    await refreshRelayState();
+    const streams = relayState.streams;
+    const licenses = relayState.licenses;
 
     if (relayState.pagePackage) {
         buildRelayPayload(null, null, 'Full Page Package');
@@ -139,12 +476,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.insertBefore(baseUrlContainer, output);
 
     if (streams.length === 0 && licenses.length === 0) {
-        status.textContent = "No Media/DRM detected. Refresh or play.";
+        setStatus('No Media/DRM detected. Refresh or play.', 'error');
         return;
     }
 
     const keysCount = relayState.pagePackage?.keys?.length || 0;
-    status.textContent = `Captured: ${streams.length} Stream(s), ${licenses.length} License(s), ${keysCount} Key(s)`;
+    setStatus(`Captured: ${streams.length} Stream(s), ${licenses.length} License(s), ${keysCount} Key(s)`, 'info');
 
     const list = document.createElement('div');
     list.id = 'streamList';

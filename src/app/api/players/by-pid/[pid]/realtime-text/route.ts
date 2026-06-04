@@ -3,6 +3,7 @@ import { getCurrentUserFromRequestOrInternalAdmin } from '@/lib/auth';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { getPlayerViewByPid } from '@/lib/player-runtime';
 import { getRealtimeTextConfigFromValues, parseJsonObject } from '@/lib/realtime-text';
+import { oversizedBodyResponse, readJsonBodyWithLimit } from '@/lib/request-security';
 import {
   getRealtimeTextSnapshotFromStore,
   ingestRealtimeTextEvent,
@@ -11,6 +12,8 @@ import {
 } from '@/lib/realtime-text-store';
 
 export const dynamic = 'force-dynamic';
+
+const REALTIME_TEXT_BODY_LIMIT_BYTES = 32 * 1024;
 
 function extractTermRules(...configs: Array<string | null | undefined>): RealtimeTextTermRule[] {
   const rules: RealtimeTextTermRule[] = [];
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pi
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    const body = await request.json() as any;
+    const body = await readJsonBodyWithLimit<any>(request, REALTIME_TEXT_BODY_LIMIT_BYTES);
     const terms = extractTermRules(player.streamConfig, player.runtimeStreamConfig);
     const result = await ingestRealtimeTextEvent(pid, body, { terms });
     if (result.accepted) {
@@ -118,6 +121,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pi
       },
     });
   } catch (error) {
+    const bodyError = oversizedBodyResponse(error);
+    if (bodyError) {
+      return bodyError;
+    }
+
     console.error('Error ingesting realtime text event:', error);
     return NextResponse.json(
       { error: 'Failed to ingest realtime text event' },

@@ -392,10 +392,12 @@ const MOBILE_PORTRAIT_BREAKPOINT = 700;
 const REALTIME_SNAPSHOT_POLL_MS = 1500;
 const LOW_LATENCY_HLS_CONFIG = {
   lowLatencyMode: true,
-  liveSyncDurationCount: 1,
-  liveMaxLatencyDurationCount: 4,
+  // Keep the low-latency preset a few segments behind the live edge so normal
+  // tunnel/CDN jitter does not turn into visible stalls.
+  liveSyncDurationCount: 3,
+  liveMaxLatencyDurationCount: 8,
   liveDurationInfinity: true,
-  maxLiveSyncPlaybackRate: 1.2,
+  maxLiveSyncPlaybackRate: 1.08,
 };
 const REALTIME_VIDEO_MODE_KEY = 'n2nj:realtime-video-mode';
 const REALTIME_VIDEO_DELAY_KEY = 'n2nj:realtime-video-delay-seconds';

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, schedules } from '@/lib/db';
+import {
+    readJsonBodyWithLimit,
+    requireApiKeyOrAdmin,
+    oversizedBodyResponse,
+} from '@/lib/request-security';
+
+const WEBHOOK_BODY_LIMIT_BYTES = 32 * 1024;
 
 /**
  * POST /api/webhook/schedule - Webhook for external systems
@@ -21,7 +28,7 @@ import { getDb, schedules } from '@/lib/db';
  */
 export async function POST(request: NextRequest) {
     try {
-        const body = await request.json() as {
+        const body = await readJsonBodyWithLimit<{
             title: string;
             description?: string;
             externalKey?: string;
@@ -30,17 +37,15 @@ export async function POST(request: NextRequest) {
             recurrence?: string;
             payload?: any;
             apiKey?: string;
-        };
+        }>(request, WEBHOOK_BODY_LIMIT_BYTES);
 
-        // API key验证（可选，后续配置）
-        const apiKey = body.apiKey || request.headers.get('X-API-Key');
-        const expectedKey = process.env.WEBHOOK_API_KEY;
-
-        if (expectedKey && apiKey !== expectedKey) {
-            return NextResponse.json(
-                { error: 'Invalid API key' },
-                { status: 401 }
-            );
+        const authFailure = await requireApiKeyOrAdmin(
+            request,
+            [process.env.WEBHOOK_API_KEY],
+            body.apiKey
+        );
+        if (authFailure) {
+            return authFailure;
         }
 
         // 验证必填字段
@@ -97,6 +102,11 @@ export async function POST(request: NextRequest) {
             schedule: schedule
         });
     } catch (error) {
+        const bodyError = oversizedBodyResponse(error);
+        if (bodyError) {
+            return bodyError;
+        }
+
         console.error('Error processing webhook:', error);
         return NextResponse.json(
             { error: 'Failed to create schedule' },

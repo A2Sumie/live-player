@@ -37,6 +37,13 @@ async function injectScripts() {
 function injectScript(scriptName) {
     return new Promise(function (resolve, reject) {
         var s = document.createElement('script');
+        var parent = document.head || document.documentElement;
+
+        if (!parent) {
+            reject(new Error("No document root available for script injection"));
+            return;
+        }
+
         s.src = chrome.runtime.getURL(scriptName);
         s.onload = function () {
             this.parentNode.removeChild(this);
@@ -44,9 +51,10 @@ function injectScript(scriptName) {
         };
         s.onerror = function () {
             console.error("Failed to load script: " + scriptName);
-            reject();
-        }
-            (document.head || document.documentElement).appendChild(s);
+            reject(new Error("Failed to load script: " + scriptName));
+        };
+
+        parent.appendChild(s);
     });
 }
 

@@ -18,11 +18,11 @@ export default function AddPlayerButton({ onClick, variant = 'normal' }: AddPlay
     return (
       <div
         onClick={onClick}
-        className="bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all duration-300 cursor-pointer group"
+        className="group cursor-pointer rounded-2xl border-2 border-dashed border-white/50 bg-white/22 backdrop-blur-lg transition-all duration-300 hover:border-blue-300/90 hover:bg-blue-50/36"
         style={{ aspectRatio: '16/9' }}
       >
-        <div className="flex flex-col items-center justify-center h-full text-gray-400 group-hover:text-blue-500 transition-colors">
-          <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center mb-3 transition-colors">
+        <div className="flex h-full flex-col items-center justify-center text-gray-500 transition-colors group-hover:text-blue-500">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/32 transition-colors group-hover:bg-blue-100/52">
             <svg 
               className="w-6 h-6" 
               fill="none" 

@@ -4,10 +4,13 @@ import { getCurrentUser } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { serializeStreamConfig } from '@/lib/stream-config';
-import { invalidatePlayerCaches, listPlayerViews } from '@/lib/player-runtime';
+import { invalidatePlayerCaches, listPlayerViews, stripSensitivePlayerConfig } from '@/lib/player-runtime';
 
 export async function GET() {
   try {
+    const user = await getCurrentUser();
+    const includeSensitiveConfig = user?.role === 'admin';
+
     const playerList = await cache.getOrFetch(
       CACHE_KEYS.PLAYER_LIST,
       async () => listPlayerViews(),
@@ -18,7 +21,7 @@ export async function GET() {
     // [MODIFIED] Exclude coverImage for list view to save bandwidth
     const playersWithArrayImages = playerList.map(player => {
       const { coverImage, ...rest } = player;
-      return rest;
+      return includeSensitiveConfig ? rest : stripSensitivePlayerConfig(rest);
     });
 
     return NextResponse.json(playersWithArrayImages);

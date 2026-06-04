@@ -5,6 +5,9 @@ import { getCurrentUser } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
 import { serializeStreamConfig } from '@/lib/stream-config';
 import { invalidatePlayerCaches, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
+import { oversizedBodyResponse, readJsonBodyWithLimit } from '@/lib/request-security';
+
+const RELAY_BODY_LIMIT_BYTES = 64 * 1024;
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
     try {
@@ -19,7 +22,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
             );
         }
 
-        const { action, streamConfig, metadata } = await request.json() as any;
+        const { action, streamConfig, metadata } = await readJsonBodyWithLimit<any>(request, RELAY_BODY_LIMIT_BYTES);
         const params = await context.params;
 
         // Support 'relay' literal or numeric ID
@@ -111,10 +114,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         return NextResponse.json({
             success: true,
             message: `Relay ${action} successful`,
-            player: { pId: updatedPlayer.pId, name: updatedPlayer.name, active: action !== 'stop' }
+            player: {
+                id: updatedPlayer.id,
+                pId: updatedPlayer.pId,
+                name: updatedPlayer.name,
+                active: action !== 'stop',
+            }
         });
 
     } catch (error) {
+        const bodyError = oversizedBodyResponse(error);
+        if (bodyError) {
+            return bodyError;
+        }
+
         console.error('Error in relay control:', error);
         return NextResponse.json(
             { error: 'Internal Server Error' },

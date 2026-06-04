@@ -1,25 +1,43 @@
 import { getDb, schedules, players } from './db';
-import { lte, eq, and } from 'drizzle-orm';
+import { asc, lte, eq, and } from 'drizzle-orm';
+
+export type ExecuteSchedulesOptions = {
+    scheduleId?: number;
+    externalKey?: string;
+    limit?: number;
+    onlyDue?: boolean;
+};
+
+const DEFAULT_EXECUTION_LIMIT = 1;
+const MAX_EXECUTION_LIMIT = 10;
 
 /**
  * 执行到期的日程
  */
-export async function executeSchedules() {
+export async function executeSchedules(options: ExecuteSchedulesOptions = {}) {
     const db = getDb();
     const now = new Date().toISOString();
+    const limit = clampExecutionLimit(options.limit);
 
     try {
-        // 查找所有到期的pending日程
+        const conditions = [eq(schedules.status, 'pending')];
+        if (options.onlyDue !== false) {
+            conditions.push(lte(schedules.executionTime, now));
+        }
+        if (options.scheduleId !== undefined) {
+            conditions.push(eq(schedules.id, options.scheduleId));
+        }
+        if (options.externalKey) {
+            conditions.push(eq(schedules.externalKey, options.externalKey));
+        }
+
+        // 查找到期的 pending 日程，默认一次只执行一条，避免 HTTP 入口长时间扫队列。
         const dueSchedules = await db
             .select()
             .from(schedules)
-            .where(
-                and(
-                    lte(schedules.executionTime, now),
-                    eq(schedules.status, 'pending')
-                )
-            )
-            .limit(50);
+            .where(and(...conditions))
+            .orderBy(asc(schedules.executionTime))
+            .limit(limit);
 
         console.log(`Found ${dueSchedules.length} due schedules`);
 
@@ -57,12 +75,21 @@ export async function executeSchedules() {
 
         return {
             processed: dueSchedules.length,
+            scheduleIds: dueSchedules.map((schedule) => schedule.id),
             success: true
         };
     } catch (error) {
         console.error('Error executing schedules:', error);
         throw error;
     }
+}
+
+function clampExecutionLimit(limit?: number) {
+    if (!limit || limit < 1) {
+        return DEFAULT_EXECUTION_LIMIT;
+    }
+
+    return Math.min(limit, MAX_EXECUTION_LIMIT);
 }
 
 /**

@@ -7,6 +7,14 @@ import { getPlayerRuntimeRecordById, invalidatePlayerCaches } from '@/lib/player
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Permission denied' },
+        { status: 403 }
+      );
+    }
+
     const params = await context.params;
     const playerId = parseInt(params.id);
 

@@ -8,6 +8,7 @@
         "scripting",
         "cookies",
         "webRequest",
+        "declarativeNetRequest",
         "storage",
         "webNavigation"
     ],

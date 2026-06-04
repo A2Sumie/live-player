@@ -9,5 +9,5 @@ export async function GET(
 ) {
     const params = await context.params;
     const { finder } = params;
-    return proxyRequest(req, `/api/cookies/${finder}`);
+    return proxyRequest(req, `/api/cookies/${finder}`, { requireAdmin: true });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, players } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
+import { invalidatePlayerCaches } from '@/lib/player-runtime';
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
@@ -71,8 +72,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       );
     }
 
+    invalidatePlayerCaches(player.pId);
+
     return NextResponse.json({ 
       message: 'Cover image uploaded successfully',
+      playerId: player.id,
+      pId: player.pId,
       fileSize: file.size,
       fileType: file.type 
     });

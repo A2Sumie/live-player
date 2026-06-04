@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { cache, CACHE_KEYS } from '@/lib/cache';
 import { getDb, playerRuntime, players, type Player, type PlayerRuntime } from '@/lib/db';
 
@@ -34,7 +34,21 @@ export type PlayerRuntimePatch = {
   lastSeenAt?: string | null;
 };
 
+export type PlayerConfigsVersion = {
+  version: string;
+  playerCount: number;
+  runtimeCount: number;
+  playerUpdatedAt: string;
+  runtimeUpdatedAt: string;
+  generatedAt: string;
+};
+
 type DbClient = ReturnType<typeof getDb>;
+
+type PlayerConfigFields = {
+  streamConfig?: string | null;
+  runtimeStreamConfig?: string | null;
+};
 
 function toEpoch(value?: string | null) {
   if (!value) {
@@ -82,9 +96,22 @@ export function mergePlayerWithRuntime(player: Player, runtime: PlayerRuntime | 
   };
 }
 
+export function getEffectiveStreamConfig(record: PlayerRuntimeRecord): string | null {
+  return record.runtime?.streamConfig ?? record.player.streamConfig ?? null;
+}
+
+export function stripSensitivePlayerConfig<T extends PlayerConfigFields>(player: T): T {
+  return {
+    ...player,
+    streamConfig: null,
+    runtimeStreamConfig: null,
+  };
+}
+
 export function invalidatePlayerCaches(...pIds: Array<string | null | undefined>) {
   cache.delete(CACHE_KEYS.PLAYER_LIST);
   cache.delete(CACHE_KEYS.PLAYER_CONFIGS);
+  cache.delete(CACHE_KEYS.PLAYER_CONFIGS_VERSION);
 
   const seen = new Set<string>();
   for (const pId of pIds) {
@@ -94,6 +121,39 @@ export function invalidatePlayerCaches(...pIds: Array<string | null | undefined>
     seen.add(pId);
     cache.delete(CACHE_KEYS.PLAYER(pId));
   }
+}
+
+export async function getPlayerConfigsVersion(
+  db: DbClient = getDb(),
+): Promise<PlayerConfigsVersion> {
+  const [[playerAgg], [runtimeAgg]] = await Promise.all([
+    db
+      .select({
+        count: sql<number>`count(*)`,
+        maxUpdatedAt: sql<string>`coalesce(max(${players.updatedAt}), '')`,
+      })
+      .from(players),
+    db
+      .select({
+        count: sql<number>`count(*)`,
+        maxUpdatedAt: sql<string>`coalesce(max(${playerRuntime.updatedAt}), '')`,
+      })
+      .from(playerRuntime),
+  ]);
+
+  const playerCount = Number(playerAgg?.count || 0);
+  const runtimeCount = Number(runtimeAgg?.count || 0);
+  const playerUpdatedAt = String(playerAgg?.maxUpdatedAt || '');
+  const runtimeUpdatedAt = String(runtimeAgg?.maxUpdatedAt || '');
+
+  return {
+    version: `p:${playerCount}:${playerUpdatedAt}|r:${runtimeCount}:${runtimeUpdatedAt}`,
+    playerCount,
+    runtimeCount,
+    playerUpdatedAt,
+    runtimeUpdatedAt,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 export async function listPlayerViews(db: DbClient = getDb()): Promise<PlayerView[]> {

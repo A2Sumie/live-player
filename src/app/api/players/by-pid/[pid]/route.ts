@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { cache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { serializeStreamConfig } from '@/lib/stream-config';
-import { getPlayerViewByPid, invalidatePlayerCaches, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
+import { getPlayerViewByPid, invalidatePlayerCaches, stripSensitivePlayerConfig, upsertPlayerRuntimeByPid } from '@/lib/player-runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pid
         }
 
         const { coverImage, ...playerWithoutImage } = player;
-        return NextResponse.json(playerWithoutImage);
+        const user = await getCurrentUser();
+        return NextResponse.json(
+            user?.role === 'admin'
+                ? playerWithoutImage
+                : stripSensitivePlayerConfig(playerWithoutImage)
+        );
     } catch (error) {
         console.error('Error fetching player by pId:', error);
         return NextResponse.json({ error: 'Failed to fetch player' }, { status: 500 });

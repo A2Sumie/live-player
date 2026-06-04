@@ -4,11 +4,21 @@ import { cache as memoryCache, CACHE_KEYS, CACHE_TTL } from '@/lib/cache';
 import { cache } from 'react';
 import { logger } from '@/lib/logger';
 import { signStreamUrl } from '@/lib/stream-auth';
-import { getPlayerViewByPid, type PlayerView } from '@/lib/player-runtime';
+import { getPlayerViewByPid, stripSensitivePlayerConfig, type PlayerView } from '@/lib/player-runtime';
 
 interface PlayerPageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}
+
+function toPlaybackSafePlayer(player: PlayerView): PlayerView {
+  const fallbackCoverUrl = player.coverImage ? `/api/players/${player.id}/cover` : null;
+  return stripSensitivePlayerConfig({
+    ...player,
+    coverUrl: player.coverUrl || fallbackCoverUrl,
+    editorialCoverUrl: player.editorialCoverUrl || fallbackCoverUrl,
+    coverImage: null,
+  });
 }
 
 const getPlayer = cache(async (pId: string): Promise<PlayerView | null> => {
@@ -19,7 +29,7 @@ const getPlayer = cache(async (pId: string): Promise<PlayerView | null> => {
       CACHE_TTL.PLAYER
     );
 
-    return player;
+    return player ? toPlaybackSafePlayer(player) : null;
   } catch (error) {
     logger.error('Error fetching player', error, 'PlayerPage:getPlayer');
     return null;
@@ -45,9 +55,21 @@ export async function generateMetadata({ params }: PlayerPageProps) {
     displayName = prefix ? `${prefix} ${player.pId}` : `频道 ${player.pId}`;
   }
 
+  let displayDescription = player.description || `观看 ${displayName}`;
+  const descSepIdx = displayDescription.indexOf('§');
+  if (descSepIdx !== -1) {
+    displayDescription = displayDescription
+      .slice(0, descSepIdx)
+      .replace(/[|｜\s]+$/, '')
+      .trim();
+    if (!displayDescription) {
+      displayDescription = `观看 ${displayName}`;
+    }
+  }
+
   return {
     title: `${displayName}`,
-    description: player.description || `观看 ${displayName}`,
+    description: displayDescription,
   };
 }
 

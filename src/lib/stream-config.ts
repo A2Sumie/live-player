@@ -27,6 +27,13 @@ function assertOptionalArray(config: JsonObject, key: string) {
   }
 }
 
+function assertOptionalObject(config: JsonObject, key: string) {
+  const value = config[key];
+  if (value !== undefined && value !== null && !isPlainObject(value)) {
+    throw new Error(`streamConfig.${key} must be an object`);
+  }
+}
+
 export function validateStreamConfig(input: unknown): JsonObject | null {
   if (input === undefined || input === null) {
     return null;
@@ -66,6 +73,10 @@ export function validateStreamConfig(input: unknown): JsonObject | null {
   assertOptionalArray(config, 'streams');
   assertOptionalArray(config, 'licenses');
   assertOptionalArray(config, 'keys');
+  assertOptionalObject(config, 'realtimeText');
+  assertOptionalObject(config, 'playback');
+  assertOptionalNumber(config, 'videoDelaySeconds');
+  assertOptionalNumber(config, 'playbackDelaySeconds');
 
   const headers = config.headers;
   if (
