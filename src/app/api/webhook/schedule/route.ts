@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
         const authFailure = await requireApiKeyOrAdmin(
             request,
-            [process.env.WEBHOOK_API_KEY],
+            [process.env.WEBHOOK_API_KEY, process.env.INTERNAL_API_SECRET],
             body.apiKey
         );
         if (authFailure) {
