@@ -216,26 +216,18 @@ function _Artplayer({
 
               if (saved) {
                 if (saved === 'auto') {
-                  hls.currentLevel = -1;
+                  applyHlsLevelSelection(hls, -1);
                 } else {
                   const levelIndex = resolveSavedLevelIndex(hls.levels, saved);
                   if (levelIndex !== -1) {
-                    hls.startLevel = levelIndex;
-                    hls.currentLevel = levelIndex;
-                    // Determine if we should lock it.
-                    // If user saved a specific quality, they likely want it forced.
-                    // But startLevel is safer for avoiding stalls if that level is bad initially?
-                    // Let's set nextLevel to force the switch immediately.
-                    hls.nextLevel = levelIndex;
+                    applyHlsLevelSelection(hls, levelIndex);
                     saveQuality(makeQualityLevelKey(hls.levels[levelIndex], levelIndex));
                   }
                 }
               } else {
                 const h264Index = findPreferredH264LevelIndex(hls.levels);
                 if (h264Index !== -1) {
-                  hls.startLevel = h264Index;
-                  hls.currentLevel = h264Index;
-                  hls.nextLevel = h264Index;
+                  applyHlsLevelSelection(hls, h264Index);
                 }
               }
             });
@@ -249,7 +241,7 @@ function _Artplayer({
                 // [FEATURE] Update Quality Control Text to show actual quality
                 const level = hls.levels[data.level];
                 if (level) {
-                  const label = `Auto (${makeQualityLevelLabel(level, data.level)})`;
+                  const label = `自动: ${makeQualityLevelLabel(level, data.level)}`;
 
                   // Update the quality control text
                   // We need to wait for the UI to update first, or force it
@@ -274,6 +266,10 @@ function _Artplayer({
                 }
               }
               setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 0);
+            });
+
+            hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+              updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
             });
           }
         },
@@ -503,6 +499,8 @@ function getLevelVariantHint(level: any) {
     level?.relurl,
     level?.details?.url,
     attrs.NAME,
+    attrs['STABLE-VARIANT-ID'],
+    attrs.STABLE_VARIANT_ID,
     attrs.URI,
   ].map(stringifyLevelSource).filter(Boolean).join(' ').toLowerCase();
 }
@@ -513,7 +511,7 @@ function getLevelCodecLabel(level: any) {
   if (vCodec.includes('avc') || vCodec.includes('h264')) return 'H264';
 
   const variantHint = getLevelVariantHint(level);
-  if (variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return 'HEVC';
+  if (variantHint.includes('hevc') || variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return 'HEVC';
   if (variantHint.includes('relay_source') || variantHint.includes('source-copy')) return 'H264';
 
   const bitrate = typeof level?.bitrate === 'number' ? level.bitrate : 0;
@@ -527,20 +525,60 @@ function getStreamServVariantLabel(level: any) {
   return '';
 }
 
+function getStreamServHevcTargetLabel(level: any) {
+  const hint = getLevelVariantHint(level);
+  const explicitName = [
+    level?.name,
+    level?.attrs?.NAME,
+  ].map(stringifyLevelSource).filter(Boolean).join(' ');
+  const explicitMatch = explicitName.match(/HEVC\s+([0-9.]+)\s*([MK])\b/i);
+  if (explicitMatch) {
+    return `${explicitMatch[1]}${explicitMatch[2].toUpperCase()}`;
+  }
+
+  const variantMatch = hint.match(/hevc[_-]([0-9.]+)(m|k)\b/i);
+  if (variantMatch) {
+    return `${variantMatch[1]}${variantMatch[2].toUpperCase()}`;
+  }
+
+  return '';
+}
+
+function getStreamServLevelDescriptor(level: any) {
+  const variant = getStreamServVariantLabel(level);
+  if (variant === '源流') {
+    return '源流 H264';
+  }
+
+  const codec = getLevelCodecLabel(level);
+  if (codec === 'HEVC') {
+    const target = getStreamServHevcTargetLabel(level);
+    return target ? `HEVC ${target} VBR` : 'HEVC VBR';
+  }
+
+  return '';
+}
+
 function makeQualityLevelLabel(level: any, index?: number) {
   const height = level?.height || 'Unknown';
-  const variant = getStreamServVariantLabel(level);
+  const descriptor = getStreamServLevelDescriptor(level);
   const codec = getLevelCodecLabel(level);
-  const bitrate = level?.bitrate ? `${(level.bitrate / 1000000).toFixed(1)}M` : '';
-  const suffix = !variant && !codec && !bitrate && Number.isFinite(index)
+  const suffix = !descriptor && !codec && Number.isFinite(index)
     ? ` #${Number(index) + 1}`
     : '';
 
   let label = `${height}P`;
-  if (variant) label += ` ${variant}`;
-  if (codec) label += ` ${codec}`;
-  if (bitrate) label += ` (${bitrate})`;
+  if (descriptor) label += ` ${descriptor}`;
+  else if (codec) label += ` ${codec}`;
   return `${label}${suffix}`;
+}
+
+function applyHlsLevelSelection(hls: Hls, levelIndex: number) {
+  hls.startLevel = levelIndex;
+  hls.currentLevel = levelIndex;
+  hls.loadLevel = levelIndex;
+  hls.nextLevel = levelIndex;
+  (hls as any).nextLoadLevel = levelIndex;
 }
 
 function saveQualityValue(value: string | number) {
@@ -676,11 +714,12 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
 
   const onSelect = (item: { html: string; value: number }) => {
     if (item.value === -1) {
-      hls.currentLevel = -1;
+      applyHlsLevelSelection(hls, -1);
       saveQualityValue('auto');
       art.notice.show = `${title}: ${autoHtml}`;
       (art.controls as any).check(item);
       (art.setting as any).check(item);
+      setTimeout(() => updateStreamServRelayVariantControl(art, hls, manifestLevels), 0);
       return autoHtml;
     }
 
@@ -694,12 +733,14 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
       return defaultHtml;
     }
 
-    hls.currentLevel = variant.levelIndex;
-    hls.nextLevel = variant.levelIndex;
+    applyHlsLevelSelection(hls, variant.levelIndex);
     saveQualityValue(makeQualityLevelKey(hls.levels[variant.levelIndex], variant.levelIndex));
     art.notice.show = `${title}: ${variant.label}`;
     (art.controls as any).check(item);
     (art.setting as any).check(item);
+    updateStreamServRelayVariantControl(art, hls, manifestLevels);
+    setTimeout(() => updateStreamServRelayVariantControl(art, hls, manifestLevels), 0);
+    setTimeout(() => updateStreamServRelayVariantControl(art, hls, manifestLevels), 250);
     return variant.label;
   };
 
