@@ -198,12 +198,20 @@ function _Artplayer({
           const hls = (art as any).hls as Hls;
           if (hls) {
             const saved = getSavedQuality();
+            let loadedManifestLevels: any[] = [];
+
+            hls.on(Hls.Events.MANIFEST_LOADED, (_event, data) => {
+              loadedManifestLevels = Array.isArray(data.levels) ? data.levels : [];
+              updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
+            });
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
               // Trigger UI update for plugins that depend on parsed metadata
               if (art.plugins.artplayerPluginHlsControl) {
                 (art.plugins.artplayerPluginHlsControl as any).update();
               }
+              updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
+              setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 100);
               requestLivePlayback(art);
 
               if (saved) {
@@ -265,6 +273,7 @@ function _Artplayer({
                   saveQuality(makeQualityLevelKey(hls.levels[data.level], data.level));
                 }
               }
+              setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 0);
             });
           }
         },
@@ -534,6 +543,12 @@ function makeQualityLevelLabel(level: any, index?: number) {
   return `${label}${suffix}`;
 }
 
+function saveQualityValue(value: string | number) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('artplayer_quality', String(value));
+  }
+}
+
 function isH264Level(level: any) {
   return getLevelCodecLabel(level) === 'H264' || getStreamServVariantLabel(level) === '源流';
 }
@@ -570,6 +585,141 @@ function resolveSavedLevelIndex(levels: any[], saved: string | null) {
   }
 
   return -1;
+}
+
+function levelUrlValues(level: any): string[] {
+  const raw = level?.url ?? level?.uri ?? level?.relurl ?? level?.details?.url;
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map(String).filter(Boolean);
+  }
+  return [String(raw)];
+}
+
+function levelUrlPathKey(value: string) {
+  try {
+    return new URL(value, 'https://stream.n2nj.moe/stream/').pathname.toLowerCase();
+  } catch {
+    return value.split('?')[0].toLowerCase();
+  }
+}
+
+function findMatchingParsedLevelIndex(manifestLevel: any, parsedLevels: any[]) {
+  const manifestKeys = new Set(levelUrlValues(manifestLevel).map(levelUrlPathKey));
+  if (manifestKeys.size > 0) {
+    const urlIndex = parsedLevels.findIndex((level) => (
+      levelUrlValues(level).some((value) => manifestKeys.has(levelUrlPathKey(value)))
+    ));
+    if (urlIndex !== -1) return urlIndex;
+  }
+
+  const manifestCodec = getLevelVideoCodec(manifestLevel);
+  return parsedLevels.findIndex((level) => (
+    level?.bitrate === manifestLevel?.bitrate
+    && level?.height === manifestLevel?.height
+    && getLevelVideoCodec(level) === manifestCodec
+  ));
+}
+
+function streamServRelayVariantOrder(level: any) {
+  const variant = getStreamServVariantLabel(level);
+  if (variant === '转码') return 0;
+  if (variant === '源流') return 1;
+  return 2;
+}
+
+function hasStreamServRelayVariants(levels: any[]) {
+  return levels.some((level) => {
+    const variantHint = getLevelVariantHint(level);
+    return variantHint.includes('relay_reencode') || variantHint.includes('relay_source');
+  });
+}
+
+function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestLevels: any[]) {
+  if (!Array.isArray(manifestLevels) || manifestLevels.length < 2 || !hasStreamServRelayVariants(manifestLevels)) {
+    return;
+  }
+
+  const title = '画质';
+  const autoHtml = '自动';
+  const variants = manifestLevels
+    .map((manifestLevel, manifestIndex) => {
+      const levelIndex = findMatchingParsedLevelIndex(manifestLevel, hls.levels);
+      const supported = levelIndex !== -1;
+      const label = makeQualityLevelLabel(manifestLevel, manifestIndex);
+      return {
+        manifestIndex,
+        levelIndex,
+        supported,
+        label,
+        html: supported ? label : `${label}（当前浏览器不可播）`,
+        sort: streamServRelayVariantOrder(manifestLevel),
+      };
+    })
+    .sort((left, right) => left.sort - right.sort || left.manifestIndex - right.manifestIndex);
+
+  const currentLevel = hls.currentLevel;
+  const selector = variants.map((variant) => ({
+    html: variant.html,
+    value: variant.manifestIndex,
+    default: variant.supported && currentLevel === variant.levelIndex,
+  }));
+
+  selector.push({
+    html: autoHtml,
+    value: -1,
+    default: hls.currentLevel === -1,
+  });
+
+  const currentVariant = variants.find((variant) => variant.supported && currentLevel === variant.levelIndex);
+  const defaultHtml = hls.currentLevel === -1 ? autoHtml : currentVariant?.label || autoHtml;
+
+  const onSelect = (item: { html: string; value: number }) => {
+    if (item.value === -1) {
+      hls.currentLevel = -1;
+      saveQualityValue('auto');
+      art.notice.show = `${title}: ${autoHtml}`;
+      (art.controls as any).check(item);
+      (art.setting as any).check(item);
+      return autoHtml;
+    }
+
+    const variant = variants.find((candidate) => candidate.manifestIndex === item.value);
+    if (!variant) {
+      return defaultHtml;
+    }
+
+    if (!variant.supported) {
+      art.notice.show = `${variant.label}: 当前浏览器不支持 HEVC/MSE`;
+      return defaultHtml;
+    }
+
+    hls.currentLevel = variant.levelIndex;
+    hls.nextLevel = variant.levelIndex;
+    saveQualityValue(makeQualityLevelKey(hls.levels[variant.levelIndex], variant.levelIndex));
+    art.notice.show = `${title}: ${variant.label}`;
+    (art.controls as any).check(item);
+    (art.setting as any).check(item);
+    return variant.label;
+  };
+
+  (art.controls as any).update({
+    name: 'hls-quality',
+    position: 'right',
+    html: defaultHtml,
+    style: { padding: '0 10px' },
+    selector,
+    onSelect,
+  });
+
+  (art.setting as any).update({
+    name: 'hls-quality',
+    tooltip: defaultHtml,
+    html: title,
+    width: 200,
+    selector,
+    onSelect,
+  });
 }
 
 type PlaybackTimecode = {
