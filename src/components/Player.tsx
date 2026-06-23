@@ -25,6 +25,7 @@ declare module 'artplayer' {
 const MUTE_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.05A4.5 4.5 0 0 0 17.5 12zm-2.5-8.5v2.06a7 7 0 0 1 0 12.88v2.06a9 9 0 0 0 0-17z" fill="currentColor"/></svg>';
 const MUTED_ICON_HTML = '<svg xmlns="http://www.w3.org/2000/svg" height="22" width="22" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm12.59 3-2.3-2.29 1.42-1.42L18 10.59l2.29-2.3 1.42 1.42L19.41 12l2.3 2.29-1.42 1.42L18 13.41l-2.29 2.3-1.42-1.42L16.59 12z" fill="currentColor"/></svg>';
 const muteControlListeners = new WeakMap<HTMLElement, EventListener>();
+const LIVE_SYNC_EDGE_SAFETY_SECONDS = 0.35;
 
 function renderMuteControl(art: Artplayer, element: HTMLElement) {
   const muted = art.video.muted || art.video.volume <= 0;
@@ -48,6 +49,55 @@ function requestLivePlayback(art: Artplayer) {
   void Promise.resolve(playResult).catch(() => {
     art.notice.show = '浏览器阻止自动播放，请点一下播放';
   });
+}
+
+function getLiveSyncTargetTime(art: Artplayer) {
+  const video = art.video;
+  const hls = (art as any).hls as Hls | undefined;
+  const hlsLiveSyncPosition = typeof hls?.liveSyncPosition === 'number' && Number.isFinite(hls.liveSyncPosition)
+    ? hls.liveSyncPosition
+    : null;
+  const seekable = video.seekable;
+
+  if (!seekable.length) {
+    return hlsLiveSyncPosition;
+  }
+
+  const seekableStart = seekable.start(seekable.length - 1);
+  const seekableEnd = seekable.end(seekable.length - 1);
+  if (!Number.isFinite(seekableStart) || !Number.isFinite(seekableEnd) || seekableEnd <= seekableStart) {
+    return hlsLiveSyncPosition;
+  }
+
+  const safeEdge = Math.max(seekableStart, seekableEnd - LIVE_SYNC_EDGE_SAFETY_SECONDS);
+  const wantedTime = hlsLiveSyncPosition ?? safeEdge;
+  return Math.min(safeEdge, Math.max(seekableStart, wantedTime));
+}
+
+function syncLivePlayback(art: Artplayer, showNotice = false) {
+  if (!art.option.isLive) {
+    return false;
+  }
+  const video = art.video;
+  const targetTime = getLiveSyncTargetTime(art);
+  let didSeek = false;
+
+  if (typeof targetTime === 'number' && Number.isFinite(targetTime) && Number.isFinite(video.currentTime)) {
+    if (Math.abs(targetTime - video.currentTime) >= LIVE_SYNC_EDGE_SAFETY_SECONDS) {
+      video.currentTime = targetTime;
+      didSeek = true;
+    }
+  }
+
+  if (video.playbackRate !== 1) {
+    video.playbackRate = 1;
+  }
+
+  requestLivePlayback(art);
+  if (showNotice) {
+    art.notice.show = didSeek ? '画面已同步' : '已在同步点';
+  }
+  return didSeek;
 }
 
 function _Artplayer({
@@ -160,15 +210,24 @@ function _Artplayer({
                 if (saved === 'auto') {
                   hls.currentLevel = -1;
                 } else {
-                  const levelIndex = hls.levels.findIndex(l => l.height === parseInt(saved));
+                  const levelIndex = resolveSavedLevelIndex(hls.levels, saved);
                   if (levelIndex !== -1) {
                     hls.startLevel = levelIndex;
+                    hls.currentLevel = levelIndex;
                     // Determine if we should lock it.
                     // If user saved a specific quality, they likely want it forced.
                     // But startLevel is safer for avoiding stalls if that level is bad initially?
                     // Let's set nextLevel to force the switch immediately.
                     hls.nextLevel = levelIndex;
+                    saveQuality(makeQualityLevelKey(hls.levels[levelIndex], levelIndex));
                   }
+                }
+              } else {
+                const h264Index = findPreferredH264LevelIndex(hls.levels);
+                if (h264Index !== -1) {
+                  hls.startLevel = h264Index;
+                  hls.currentLevel = h264Index;
+                  hls.nextLevel = h264Index;
                 }
               }
             });
@@ -182,17 +241,7 @@ function _Artplayer({
                 // [FEATURE] Update Quality Control Text to show actual quality
                 const level = hls.levels[data.level];
                 if (level) {
-                  const height = level.height || '';
-
-                  // Robust codec detection
-                  let codecLabel = '';
-                  const attrs = level.attrs || {};
-                  const vCodec = (level.videoCodec || attrs.CODECS || '').toLowerCase();
-
-                  if (vCodec.includes('hvc') || vCodec.includes('hev')) codecLabel = 'HEVC';
-                  else if (vCodec.includes('avc') || vCodec.includes('h264')) codecLabel = 'H264';
-
-                  const label = `Auto (${height}P${codecLabel ? ' ' + codecLabel : ''})`;
+                  const label = `Auto (${makeQualityLevelLabel(level, data.level)})`;
 
                   // Update the quality control text
                   // We need to wait for the UI to update first, or force it
@@ -213,7 +262,7 @@ function _Artplayer({
 
               } else {
                 if (hls.levels[data.level]) {
-                  saveQuality(hls.levels[data.level].height);
+                  saveQuality(makeQualityLevelKey(hls.levels[data.level], data.level));
                 }
               }
             });
@@ -283,23 +332,7 @@ function _Artplayer({
           quality: {
             control: true,
             setting: true,
-            getName: (level: any) => {
-              const height = level.height || 'Unknown';
-              const bitrate = level.bitrate ? (level.bitrate / 1000000).toFixed(1) + 'M' : '';
-
-              // Robust codec detection
-              let codec = '';
-              const attrs = level.attrs || {};
-              const vCodec = (level.videoCodec || attrs.CODECS || '').toLowerCase();
-
-              if (vCodec.includes('hvc') || vCodec.includes('hev')) codec = 'HEVC';
-              else if (vCodec.includes('avc') || vCodec.includes('h264')) codec = 'H264';
-
-              let label = `${height}P`;
-              if (codec) label += ` ${codec}`;
-              if (bitrate) label += ` (${bitrate})`;
-              return label;
-            },
+            getName: (level: any, index?: number) => makeQualityLevelLabel(level, index),
             title: '画质',
             auto: '自动',
           },
@@ -316,6 +349,22 @@ function _Artplayer({
 
     // Enforce "No Pause" policy for Live Player & Auto-Sync
     const livePlaybackTimer = window.setInterval(() => requestLivePlayback(art), 3000);
+    const playerElement = (art as any).template?.$player as HTMLElement | undefined;
+    const handleLiveSurfaceClick = (event: MouseEvent) => {
+      if (!art.option.isLive) {
+        return;
+      }
+      const targetElement = event.target as HTMLElement | null;
+      const isVideoSurface = targetElement === art.video || Boolean(targetElement?.closest('.art-mask'));
+      if (!isVideoSurface) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      syncLivePlayback(art, true);
+    };
+    playerElement?.addEventListener('click', handleLiveSurfaceClick, true);
     art.on('pause', () => {
       if (!art.option.isLive) return;
       art.notice.show = '直播模式无法暂停';
@@ -339,6 +388,7 @@ function _Artplayer({
     return () => {
       console.log('destroy outside')
       window.clearInterval(livePlaybackTimer);
+      playerElement?.removeEventListener('click', handleLiveSurfaceClick, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (art && art.destroy) {
         console.log('destroy inside')
@@ -381,15 +431,15 @@ const MARKER_COLORS = [
 ];
 
 const REALTIME_SUBTITLE_MAX_HOLD_MS = 60000;
-const DEFAULT_SUBTITLE_OFFSET_SECONDS = 4.5;
-const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 4.5;
+const DEFAULT_SUBTITLE_OFFSET_SECONDS = 1.5;
+const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 0.3;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
 const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 6;
 const MOBILE_PORTRAIT_BREAKPOINT = 700;
-const REALTIME_SNAPSHOT_POLL_MS = 1500;
+const REALTIME_SNAPSHOT_POLL_MS = 1000;
 const LOW_LATENCY_HLS_CONFIG = {
   lowLatencyMode: true,
   // Keep the low-latency preset a few segments behind the live edge so normal
@@ -401,6 +451,7 @@ const LOW_LATENCY_HLS_CONFIG = {
 };
 const REALTIME_VIDEO_MODE_KEY = 'n2nj:realtime-video-mode';
 const REALTIME_VIDEO_DELAY_KEY = 'n2nj:realtime-video-delay-seconds';
+const QUALITY_LEVEL_KEY_PREFIX = 'level:';
 
 function makeAlignedHlsConfig(targetDelaySeconds: number) {
   const liveSyncDuration = Math.max(DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS, targetDelaySeconds);
@@ -413,6 +464,114 @@ function makeAlignedHlsConfig(targetDelaySeconds: number) {
   };
 }
 
+function getLevelVideoCodec(level: any) {
+  const attrs = level?.attrs || {};
+  return String(level?.videoCodec || attrs.CODECS || '').toLowerCase();
+}
+
+function stringifyLevelSource(value: any): string {
+  if (!value) return '';
+  if (Array.isArray(value)) return value.map(stringifyLevelSource).filter(Boolean).join(' ');
+  if (typeof value === 'object') {
+    return [
+      value.url,
+      value.uri,
+      value.relurl,
+      value.path,
+      value.name,
+      value.NAME,
+    ].map(stringifyLevelSource).filter(Boolean).join(' ');
+  }
+  return String(value);
+}
+
+function getLevelVariantHint(level: any) {
+  const attrs = level?.attrs || {};
+  return [
+    level?.name,
+    level?.url,
+    level?.uri,
+    level?.relurl,
+    level?.details?.url,
+    attrs.NAME,
+    attrs.URI,
+  ].map(stringifyLevelSource).filter(Boolean).join(' ').toLowerCase();
+}
+
+function getLevelCodecLabel(level: any) {
+  const vCodec = getLevelVideoCodec(level);
+  if (vCodec.includes('hvc') || vCodec.includes('hev')) return 'HEVC';
+  if (vCodec.includes('avc') || vCodec.includes('h264')) return 'H264';
+
+  const variantHint = getLevelVariantHint(level);
+  if (variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return 'HEVC';
+  if (variantHint.includes('relay_source') || variantHint.includes('source-copy')) return 'H264';
+
+  const bitrate = typeof level?.bitrate === 'number' ? level.bitrate : 0;
+  return bitrate >= 4000000 ? 'HEVC' : '';
+}
+
+function getStreamServVariantLabel(level: any) {
+  const variantHint = getLevelVariantHint(level);
+  if (variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return '转码';
+  if (variantHint.includes('relay_source') || variantHint.includes('source-copy')) return '源流';
+  return '';
+}
+
+function makeQualityLevelLabel(level: any, index?: number) {
+  const height = level?.height || 'Unknown';
+  const variant = getStreamServVariantLabel(level);
+  const codec = getLevelCodecLabel(level);
+  const bitrate = level?.bitrate ? `${(level.bitrate / 1000000).toFixed(1)}M` : '';
+  const suffix = !variant && !codec && !bitrate && Number.isFinite(index)
+    ? ` #${Number(index) + 1}`
+    : '';
+
+  let label = `${height}P`;
+  if (variant) label += ` ${variant}`;
+  if (codec) label += ` ${codec}`;
+  if (bitrate) label += ` (${bitrate})`;
+  return `${label}${suffix}`;
+}
+
+function isH264Level(level: any) {
+  return getLevelCodecLabel(level) === 'H264' || getStreamServVariantLabel(level) === '源流';
+}
+
+function makeQualityLevelKey(level: any, index: number) {
+  const height = Number.isFinite(level?.height) ? level.height : 'unknown';
+  const bitrate = Number.isFinite(level?.bitrate) ? level.bitrate : 0;
+  const codec = getLevelCodecLabel(level) || 'unknown';
+  return `${QUALITY_LEVEL_KEY_PREFIX}${index}:${height}:${codec}:${bitrate}`;
+}
+
+function findPreferredH264LevelIndex(levels: any[], preferredHeight?: number) {
+  const matchingH264 = levels.findIndex((level) => (
+    isH264Level(level) && (!preferredHeight || level.height === preferredHeight)
+  ));
+  if (matchingH264 !== -1) return matchingH264;
+
+  return levels.findIndex(isH264Level);
+}
+
+function resolveSavedLevelIndex(levels: any[], saved: string | null) {
+  if (!saved || saved === 'auto') return -1;
+
+  if (saved.startsWith(QUALITY_LEVEL_KEY_PREFIX)) {
+    const index = Number.parseInt(saved.slice(QUALITY_LEVEL_KEY_PREFIX.length), 10);
+    return Number.isInteger(index) && index >= 0 && index < levels.length ? index : -1;
+  }
+
+  const legacyHeight = Number.parseInt(saved, 10);
+  if (Number.isFinite(legacyHeight)) {
+    const preferred = findPreferredH264LevelIndex(levels, legacyHeight);
+    if (preferred !== -1) return preferred;
+    return levels.findIndex((level) => level.height === legacyHeight);
+  }
+
+  return -1;
+}
+
 type PlaybackTimecode = {
   wallTimeMs: number | null;
   latencyMs: number | null;
@@ -423,7 +582,7 @@ type PlaybackTimecode = {
 
 type VideoLatencyMode = 'aligned' | 'low';
 
-const REALTIME_SETTINGS_VERSION = 8;
+const REALTIME_SETTINGS_VERSION = 10;
 
 function getUrlRealtimePreset() {
   if (typeof window === 'undefined') {
@@ -884,26 +1043,45 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const realtimeSegments = realtimeSnapshot?.segments?.length
     ? realtimeSnapshot.segments
     : (debug && realtimeEnabled ? makePreviewSegments() : []);
-  const configuredSubtitleOffsetMs = Math.max(0, subtitleOffsetSeconds || 0) * 1000;
-  const realtimeTextWindow = findRealtimeTextWindow(
+  const sourceSubtitleOffsetSeconds = showSourceText && showTranslationText
+    ? DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS
+    : subtitleOffsetSeconds;
+  const translationSubtitleOffsetSeconds = subtitleOffsetSeconds;
+  const sourceSubtitleOffsetMs = Math.max(0, sourceSubtitleOffsetSeconds || 0) * 1000;
+  const translationSubtitleOffsetMs = Math.max(0, translationSubtitleOffsetSeconds || 0) * 1000;
+  const sourceRealtimeTextWindow = findRealtimeTextWindow(
     realtimeSegments,
     realtimeSnapshot?.partial,
     nowJst,
-    configuredSubtitleOffsetMs,
+    sourceSubtitleOffsetMs,
     playbackTimecode,
   );
-  const activeRealtimeSegment = realtimeTextWindow.current;
-  const subtitleTextPieces = buildSubtitleTextPieces(
+  const translationRealtimeTextWindow = findRealtimeTextWindow(
     realtimeSegments,
-    activeRealtimeSegment,
-    !realtimeTextWindow.usedTimeline || !activeRealtimeSegment,
+    realtimeSnapshot?.partial,
+    nowJst,
+    translationSubtitleOffsetMs,
+    playbackTimecode,
+  );
+  const realtimeTextWindow = showTranslationText && !showSourceText
+    ? translationRealtimeTextWindow
+    : sourceRealtimeTextWindow;
+  const activeRealtimeSegment = realtimeTextWindow.current;
+  const sourceSubtitleTextPieces = buildSubtitleTextPieces(
+    realtimeSegments,
+    sourceRealtimeTextWindow.current,
+    !sourceRealtimeTextWindow.usedTimeline || !sourceRealtimeTextWindow.current,
+    SUBTITLE_OVERLAY_CONTEXT_SEGMENTS,
+  );
+  const translationSubtitleTextPieces = buildSubtitleTextPieces(
+    realtimeSegments,
+    translationRealtimeTextWindow.current,
+    !translationRealtimeTextWindow.usedTimeline || !translationRealtimeTextWindow.current,
     SUBTITLE_OVERLAY_CONTEXT_SEGMENTS,
   );
   const showSubtitleText = Boolean(
-    subtitleTextPieces.some(({ segment }) => (
-      (showSourceText && segment.sourceText?.trim())
-      || (showTranslationText && segment.translatedText?.trim())
-    )),
+    (showSourceText && sourceSubtitleTextPieces.some(({ segment }) => segment.sourceText?.trim()))
+    || (showTranslationText && translationSubtitleTextPieces.some(({ segment }) => segment.translatedText?.trim())),
   );
   const activeReceiveLag = formatLag(nowJst, activeRealtimeSegment?.receivedAt || activeRealtimeSegment?.updatedAt);
   const activeTranslationLag = activeRealtimeSegment?.translatedText
@@ -913,6 +1091,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const playbackLatencyLabel = playbackTimecode.latencyMs !== null ? formatMillis(playbackTimecode.latencyMs) : '--s';
   const playbackClockLabel = playbackTimecode.wallTimeMs !== null ? formatClockJst(playbackTimecode.wallTimeMs) : '--:--:--';
   const videoLatencyLabel = videoLatencyMode === 'low' ? '低延迟' : `目标 ${videoDelaySeconds}s`;
+  const subtitleOffsetLabel = showSourceText && showTranslationText
+    ? `日+${sourceSubtitleOffsetSeconds}s/译+${translationSubtitleOffsetSeconds}s`
+    : `+${subtitleOffsetSeconds}s`;
   const subtitlesVisible = showSourceText || showTranslationText;
   const sourceSubtitlePresetActive = videoLatencyMode === 'aligned' && showSourceText && !showTranslationText && !transcriptOpen;
   const bilingualPresetActive = videoLatencyMode === 'aligned' && showTranslationText && showSourceText && !transcriptOpen && videoDelaySeconds >= DEFAULT_STABLE_VIDEO_DELAY_SECONDS;
@@ -1431,8 +1612,11 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     }
   };
 
-  const splitSubtitlePieces = (getText: (segment: RealtimeTextSegment) => string) => {
-    const visiblePieces = subtitleTextPieces.filter(({ segment }) => getText(segment).trim());
+  const splitSubtitlePieces = (
+    pieces: SubtitleTextPiece[],
+    getText: (segment: RealtimeTextSegment) => string,
+  ) => {
+    const visiblePieces = pieces.filter(({ segment }) => getText(segment).trim());
     if (visiblePieces.length <= 1) {
       return [visiblePieces, []] as const;
     }
@@ -1449,8 +1633,14 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     }
     return [visiblePieces.slice(0, splitIndex), visiblePieces.slice(splitIndex)] as const;
   };
-  const [sourceSubtitleRowA, sourceSubtitleRowB] = splitSubtitlePieces((segment) => segment.sourceText || '');
-  const [translationSubtitleRowA, translationSubtitleRowB] = splitSubtitlePieces((segment) => segment.translatedText || '');
+  const [sourceSubtitleRowA, sourceSubtitleRowB] = splitSubtitlePieces(
+    sourceSubtitleTextPieces,
+    (segment) => segment.sourceText || '',
+  );
+  const [translationSubtitleRowA, translationSubtitleRowB] = splitSubtitlePieces(
+    translationSubtitleTextPieces,
+    (segment) => segment.translatedText || '',
+  );
   const sourceSubtitleRows = [
     {
       key: 'source-context',
@@ -1528,7 +1718,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         ))}
         {showTiming && realtimeConfig.showTiming && activeRealtimeSegment && (
           <div className="mt-1 text-[0.66em] font-medium text-white/58">
-            JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s · 采 {activeCaptureClock} · 收 {activeReceiveLag}
+            JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} {subtitleOffsetLabel} · 采 {activeCaptureClock} · 收 {activeReceiveLag}
           </div>
         )}
       </div>
@@ -1815,7 +2005,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                       <span className="tabular-nums">{videoDelaySeconds}s</span>
                     </label>
                     <label className="inline-flex items-center gap-2">
-                      <span>字幕延迟</span>
+                      <span>{showSourceText && showTranslationText ? '译文延迟' : '字幕延迟'}</span>
                       <input
                         type="range"
                         min="0"
@@ -1899,7 +2089,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                 </div>
                 {showTiming && realtimeConfig.showTiming && (
                   <div className="mt-1 truncate text-[11px] text-slate-400">
-                    JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} +{subtitleOffsetSeconds}s
+                    JST {formatClockJst(nowJst)} · 播 {playbackClockLabel} · 画面 {videoLatencyLabel}/{playbackLatencyLabel} · 字幕 {realtimeTextWindow.usedTimeline ? '时间码' : '最新段'} {subtitleOffsetLabel}
                   </div>
                 )}
               </div>

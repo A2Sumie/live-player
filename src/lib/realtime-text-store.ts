@@ -76,6 +76,21 @@ function parseJsonText(value?: string | null): Record<string, unknown> | null {
   }
 }
 
+function mergeTimelineMetaText(
+  existingValue?: string | null,
+  nextValue?: string | null,
+): string | null {
+  const existing = parseJsonText(existingValue);
+  const next = parseJsonText(nextValue);
+  if (!existing) {
+    return nextValue || null;
+  }
+  if (!next) {
+    return existingValue || null;
+  }
+  return toJsonText({ ...existing, ...next });
+}
+
 function safeTextColumn(value?: string | null, missingColumnLiteral?: string): string | null {
   if (!value || value === missingColumnLiteral) {
     return null;
@@ -489,7 +504,7 @@ export async function ingestRealtimeTextEvent(
       receivedAt: timelineMeta.receivedAt,
       eventCreatedAt: timelineMeta.eventCreatedAt,
       eventSequence: timelineMeta.eventSequence,
-      timelineMeta: timelineMeta.timelineMeta,
+      timelineMeta: mergeTimelineMetaText(existing?.timelineMeta, timelineMeta.timelineMeta),
     } : {};
 
     if (existing) {
