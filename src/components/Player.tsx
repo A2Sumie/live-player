@@ -120,10 +120,15 @@ function _Artplayer({
         if ((art as any).hls) (art as any).hls.destroy();
         const originUrlObj = new URL(url);
         const queryParms = originUrlObj.searchParams;
-        const realtimeVideoMode = readInitialRealtimeVideoMode();
+        const isRelayPlayer = isStreamServRelayPlayer(player, url);
+        const defaultVideoLatencyMode = isRelayPlayer ? 'aligned' : 'low';
+        const defaultVideoDelaySeconds = isRelayPlayer ? DEFAULT_RELAY_VIDEO_DELAY_SECONDS : DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS;
+        const realtimeVideoMode = readInitialRealtimeVideoMode(defaultVideoLatencyMode);
         const hlsLatencyConfig = realtimeVideoMode === 'low'
           ? LOW_LATENCY_HLS_CONFIG
-          : makeAlignedHlsConfig(readInitialRealtimeVideoDelaySeconds());
+          : makeAlignedHlsConfig(readInitialRealtimeVideoDelaySeconds(defaultVideoDelaySeconds, {
+            useStoredDelay: !isRelayPlayer,
+          }));
         const hls = new Hls({
           debug: debug, // Enable debug if requested
           autoStartLoad: false,
@@ -485,6 +490,7 @@ const DEFAULT_SUBTITLE_OFFSET_SECONDS = 1.5;
 const DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS = 0.3;
 const SUBTITLE_OFFSET_MAX_SECONDS = 8;
 const DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS = 15;
+const DEFAULT_RELAY_VIDEO_DELAY_SECONDS = 15;
 const DEFAULT_STABLE_VIDEO_DELAY_SECONDS = 20;
 const SUBTITLE_CONTEXT_SEGMENTS = 5;
 const SUBTITLE_OVERLAY_CONTEXT_SEGMENTS = 6;
@@ -946,7 +952,25 @@ function getUrlRealtimePreset() {
   };
 }
 
-function readInitialRealtimeVideoMode(): VideoLatencyMode {
+function isStreamServRelayPlayer(player?: Pick<Player, 'pId' | 'url'> | null, url?: string) {
+  if (String(player?.pId || '').toLowerCase() === 'relay') {
+    return true;
+  }
+  const candidate = `${player?.url || ''} ${url || ''}`.toLowerCase();
+  return /\/stream\/relay(?:_[a-z0-9-]+)?\.m3u8\b/.test(candidate);
+}
+
+function getDefaultRealtimeVideoMode(player?: Pick<Player, 'pId' | 'url'> | null, url?: string): VideoLatencyMode {
+  return isStreamServRelayPlayer(player, url) ? 'aligned' : 'low';
+}
+
+function getDefaultRealtimeVideoDelaySeconds(player?: Pick<Player, 'pId' | 'url'> | null, url?: string) {
+  return isStreamServRelayPlayer(player, url)
+    ? DEFAULT_RELAY_VIDEO_DELAY_SECONDS
+    : DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS;
+}
+
+function readInitialRealtimeVideoMode(defaultMode: VideoLatencyMode = 'low'): VideoLatencyMode {
   if (typeof window !== 'undefined') {
     const override = (window as any).__n2njRealtimeVideoMode as VideoLatencyMode | undefined;
     if (override === 'low' || override === 'aligned') {
@@ -954,8 +978,8 @@ function readInitialRealtimeVideoMode(): VideoLatencyMode {
     }
   }
   const preset = getUrlRealtimePreset();
-  if (!preset) {
-    return 'low';
+  if (!preset || (!preset.preset && !preset.latency && !preset.subtitle)) {
+    return defaultMode;
   }
   if (preset.preset === 'low' || preset.latency === 'low' || preset.subtitle === 'off') {
     return 'low';
@@ -963,10 +987,14 @@ function readInitialRealtimeVideoMode(): VideoLatencyMode {
   if (preset.preset === 'source' || preset.preset === 'bilingual' || preset.preset === 'aligned' || preset.subtitle === 'on') {
     return 'aligned';
   }
-  return 'low';
+  return defaultMode;
 }
 
-function readInitialRealtimeVideoDelaySeconds() {
+function readInitialRealtimeVideoDelaySeconds(
+  defaultDelaySeconds = DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS,
+  options: { useStoredDelay?: boolean } = {},
+) {
+  const useStoredDelay = options.useStoredDelay ?? true;
   if (typeof window !== 'undefined') {
     const override = Number((window as any).__n2njRealtimeVideoDelaySeconds);
     if (Number.isFinite(override) && override > 0) {
@@ -984,15 +1012,15 @@ function readInitialRealtimeVideoDelaySeconds() {
     return DEFAULT_STABLE_VIDEO_DELAY_SECONDS;
   }
   if (preset?.preset === 'source' || preset?.preset === 'aligned' || preset?.subtitle === 'on') {
-    return DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS;
+    return defaultDelaySeconds;
   }
-  if (typeof window !== 'undefined') {
+  if (useStoredDelay && typeof window !== 'undefined') {
     const stored = Number(window.localStorage.getItem(REALTIME_VIDEO_DELAY_KEY));
     if (Number.isFinite(stored) && stored > 0) {
       return stored;
     }
   }
-  return DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS;
+  return defaultDelaySeconds;
 }
 
 type StoredRealtimeSettings = {
@@ -1358,23 +1386,28 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   const [debugRealtimeEnabled, setDebugRealtimeEnabled] = useState(false);
   const [realtimeSnapshot, setRealtimeSnapshot] = useState<RealtimeTextSnapshot | null>(null);
   const realtimeConfig = realtimeSnapshot?.config || DEFAULT_REALTIME_TEXT_CONFIG;
+  const isRelayDefaultPlayer = isStreamServRelayPlayer(player);
+  const defaultVideoLatencyMode = isRelayDefaultPlayer ? 'aligned' : 'low';
+  const defaultVideoDelaySeconds = isRelayDefaultPlayer ? DEFAULT_RELAY_VIDEO_DELAY_SECONDS : DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS;
   const [subtitleOpacity, setSubtitleOpacity] = useState(DEFAULT_REALTIME_TEXT_CONFIG.subtitleOpacity);
   const [subtitleScale, setSubtitleScale] = useState(DEFAULT_REALTIME_TEXT_CONFIG.subtitleScale);
   const [realtimeControlsOpen, setRealtimeControlsOpen] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(DEFAULT_REALTIME_TEXT_CONFIG.transcriptPanel);
   const [showSourceText, setShowSourceText] = useState(() => (
-    readInitialRealtimeVideoMode() === 'aligned' ? DEFAULT_REALTIME_TEXT_CONFIG.showSource : false
+    readInitialRealtimeVideoMode(defaultVideoLatencyMode) === 'aligned' ? DEFAULT_REALTIME_TEXT_CONFIG.showSource : false
   ));
   const [showTranslationText, setShowTranslationText] = useState(() => {
-    if (readInitialRealtimeVideoMode() !== 'aligned') {
+    if (readInitialRealtimeVideoMode(defaultVideoLatencyMode) !== 'aligned') {
       return false;
     }
     return getUrlRealtimePreset()?.preset === 'source' ? false : DEFAULT_REALTIME_TEXT_CONFIG.showTranslation;
   });
   const [showTiming, setShowTiming] = useState(DEFAULT_REALTIME_TEXT_CONFIG.showTiming);
   const [subtitleOffsetSeconds, setSubtitleOffsetSeconds] = useState(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-  const [videoDelaySeconds, setVideoDelaySeconds] = useState(() => readInitialRealtimeVideoDelaySeconds());
-  const [videoLatencyMode, setVideoLatencyMode] = useState<VideoLatencyMode>(() => readInitialRealtimeVideoMode());
+  const [videoDelaySeconds, setVideoDelaySeconds] = useState(() => readInitialRealtimeVideoDelaySeconds(defaultVideoDelaySeconds, {
+    useStoredDelay: !isRelayDefaultPlayer,
+  }));
+  const [videoLatencyMode, setVideoLatencyMode] = useState<VideoLatencyMode>(() => readInitialRealtimeVideoMode(defaultVideoLatencyMode));
   const [isPortraitViewport, setIsPortraitViewport] = useState(false);
   const [nowJst, setNowJst] = useState(() => new Date());
   const [playbackTimecode, setPlaybackTimecode] = useState<PlaybackTimecode>(() => readPlaybackTimecode(null));
@@ -1653,9 +1686,10 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setShowSourceText(realtimeConfig.showSource);
     setShowTranslationText(realtimeConfig.showTranslation);
     setShowTiming(realtimeConfig.showTiming);
-    setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+    setVideoDelaySeconds(realtimeConfig.videoDelaySeconds || defaultVideoDelaySeconds);
     setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
   }, [
+    defaultVideoDelaySeconds,
     realtimeConfig.subtitleOpacity,
     realtimeConfig.subtitleScale,
     realtimeConfig.transcriptPanel,
@@ -1715,7 +1749,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         if (typeof stored.videoDelaySeconds === 'number') {
           setVideoDelaySeconds(clampUiNumber(
             stored.videoDelaySeconds,
-            realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS,
+            realtimeConfig.videoDelaySeconds || defaultVideoDelaySeconds,
             0,
             45,
           ));
@@ -1732,13 +1766,13 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
           setVideoLatencyMode('aligned');
         }
       } else if (preset !== 'aligned' && preset !== 'source' && preset !== 'bilingual' && preset !== 'low' && latency !== 'low' && subtitle !== 'off' && subtitle !== 'on') {
-        setVideoLatencyMode('low');
+        setVideoLatencyMode(defaultVideoLatencyMode);
         setTranscriptOpen(false);
         setShowSourceText(false);
         setShowTranslationText(false);
         setShowTiming(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(0);
+        setVideoDelaySeconds(defaultVideoLatencyMode === 'aligned' ? defaultVideoDelaySeconds : 0);
       }
       if (preset === 'low' || latency === 'low' || subtitle === 'off') {
         setVideoLatencyMode('low');
@@ -1755,7 +1789,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowTiming(false);
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SOURCE_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(queryDelaySeconds || realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS);
+        setVideoDelaySeconds(queryDelaySeconds || realtimeConfig.videoDelaySeconds || defaultVideoDelaySeconds);
       } else if (preset === 'bilingual' || preset === 'aligned' || subtitle === 'on') {
         setVideoLatencyMode('aligned');
         setShowTranslationText(true);
@@ -1763,14 +1797,22 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
         setShowTiming(false);
         setTranscriptOpen(false);
         setSubtitleOffsetSeconds(DEFAULT_SUBTITLE_OFFSET_SECONDS);
-        setVideoDelaySeconds(queryDelaySeconds || (preset === 'bilingual' ? DEFAULT_STABLE_VIDEO_DELAY_SECONDS : realtimeConfig.videoDelaySeconds || DEFAULT_ALIGNED_VIDEO_DELAY_SECONDS));
+        setVideoDelaySeconds(queryDelaySeconds || (preset === 'bilingual' ? DEFAULT_STABLE_VIDEO_DELAY_SECONDS : realtimeConfig.videoDelaySeconds || defaultVideoDelaySeconds));
       }
     } catch (error) {
       console.warn('Realtime text settings unavailable', error);
     } finally {
       settingsLoadedRef.current = true;
     }
-  }, [realtimeConfig.transcriptPanel, realtimeConfig.videoDelaySeconds, realtimeSettingsKey]);
+  }, [
+    defaultVideoDelaySeconds,
+    defaultVideoLatencyMode,
+    realtimeConfig.subtitleOpacity,
+    realtimeConfig.subtitleScale,
+    realtimeConfig.transcriptPanel,
+    realtimeConfig.videoDelaySeconds,
+    realtimeSettingsKey,
+  ]);
 
   useEffect(() => {
     if (!settingsLoadedRef.current) {
