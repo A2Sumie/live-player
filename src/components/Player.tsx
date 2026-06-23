@@ -547,7 +547,7 @@ function getStreamServHevcTargetLabel(level: any) {
 function getStreamServLevelDescriptor(level: any) {
   const variant = getStreamServVariantLabel(level);
   if (variant === '源流') {
-    return '源流 H264';
+    return '源流';
   }
 
   const codec = getLevelCodecLabel(level);
