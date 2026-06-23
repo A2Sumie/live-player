@@ -256,6 +256,7 @@ function _Artplayer({
                 selectAndStart(-1);
               }
               requestLivePlayback(art);
+              scheduleStreamServSourceFallbackIfStalled(art, hls, loadedManifestLevels);
             });
 
             // Listen for changes
@@ -867,6 +868,7 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
     saveQualityValue(makeQualityLevelKey(hls.levels[variant.levelIndex], variant.levelIndex));
     art.notice.show = `${title}: ${variant.label}`;
     requestLivePlayback(art);
+    scheduleStreamServSourceFallbackIfStalled(art, hls, manifestLevels);
     (art.controls as any).check(item);
     (art.setting as any).check(item);
     updateStreamServRelayVariantControl(art, hls, manifestLevels);
@@ -892,6 +894,32 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
     selector,
     onSelect,
   });
+}
+
+function scheduleStreamServSourceFallbackIfStalled(art: Artplayer, hls: Hls, manifestLevels: any[]) {
+  if (typeof window === 'undefined') return;
+  const sourceIndex = findStreamServSourceLevelIndex(hls.levels, manifestLevels);
+  if (sourceIndex === -1) return;
+
+  window.setTimeout(() => {
+    if ((art as any).hls !== hls || hls.currentLevel === sourceIndex) {
+      return;
+    }
+
+    const currentLevel = hls.currentLevel >= 0 ? hls.levels[hls.currentLevel] : null;
+    const shouldFallback = hls.currentLevel === -1
+      || !currentLevel
+      || getLevelCodecLabel(currentLevel) === 'HEVC';
+    if (!shouldFallback || art.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return;
+    }
+
+    applyHlsLevelSelection(hls, sourceIndex);
+    saveQualityValue(makeQualityLevelKey(hls.levels[sourceIndex], sourceIndex));
+    art.notice.show = '画质: 源流';
+    requestLivePlayback(art);
+    updateStreamServRelayVariantControl(art, hls, manifestLevels);
+  }, 4500);
 }
 
 type PlaybackTimecode = {
