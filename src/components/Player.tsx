@@ -126,6 +126,7 @@ function _Artplayer({
           : makeAlignedHlsConfig(readInitialRealtimeVideoDelaySeconds());
         const hls = new Hls({
           debug: debug, // Enable debug if requested
+          autoStartLoad: false,
           ...hlsLatencyConfig,
           xhrSetup(xhr, tsUrl) {
             if (tsUrl.includes(".ts") || tsUrl.includes(".m4s") || tsUrl.includes(".mp4") || tsUrl.endsWith(".m3u8")) {
@@ -212,33 +213,49 @@ function _Artplayer({
               }
               updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
               setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 100);
-              requestLivePlayback(art);
+              let hasStartedLoad = false;
+              const selectAndStart = (levelIndex: number) => {
+                applyHlsLevelSelection(hls, levelIndex);
+                hasStartedLoad = true;
+              };
 
               const safeSourceIndex = findHevcUnsafeStreamServSourceLevelIndex(hls.levels, loadedManifestLevels);
               if (safeSourceIndex !== -1) {
-                applyHlsLevelSelection(hls, safeSourceIndex);
-                saveQuality(makeQualityLevelKey(hls.levels[safeSourceIndex], safeSourceIndex));
+                selectAndStart(safeSourceIndex);
+                saveQuality('auto');
                 updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
                 requestLivePlayback(art);
                 return;
               }
 
-              if (saved) {
-                if (saved === 'auto') {
-                  applyHlsLevelSelection(hls, -1);
-                } else {
-                  const levelIndex = resolveSavedLevelIndex(hls.levels, saved);
-                  if (levelIndex !== -1) {
-                    applyHlsLevelSelection(hls, levelIndex);
-                    saveQuality(makeQualityLevelKey(hls.levels[levelIndex], levelIndex));
-                  }
-                }
-              } else {
-                const h264Index = findPreferredH264LevelIndex(hls.levels);
-                if (h264Index !== -1) {
-                  applyHlsLevelSelection(hls, h264Index);
+              if (saved && saved !== 'auto') {
+                const levelIndex = resolveSavedLevelIndex(hls.levels, saved);
+                if (levelIndex !== -1 && isLevelPlayableInCurrentBrowser(hls.levels[levelIndex])) {
+                  selectAndStart(levelIndex);
+                  saveQuality(makeQualityLevelKey(hls.levels[levelIndex], levelIndex));
                 }
               }
+
+              if (!hasStartedLoad) {
+                const streamServSourceIndex = findStreamServAutoSourceLevelIndex(hls.levels, loadedManifestLevels);
+                if (streamServSourceIndex !== -1) {
+                  selectAndStart(streamServSourceIndex);
+                  saveQuality(saved === 'auto' ? 'auto' : makeQualityLevelKey(hls.levels[streamServSourceIndex], streamServSourceIndex));
+                } else if (saved === 'auto') {
+                  selectAndStart(-1);
+                } else {
+                  const h264Index = findPreferredH264LevelIndex(hls.levels);
+                  if (h264Index !== -1) {
+                    selectAndStart(h264Index);
+                    saveQuality(makeQualityLevelKey(hls.levels[h264Index], h264Index));
+                  }
+                }
+              }
+
+              if (!hasStartedLoad) {
+                selectAndStart(-1);
+              }
+              requestLivePlayback(art);
             });
 
             // Listen for changes
@@ -292,6 +309,7 @@ function _Artplayer({
               const currentLevel = hls.currentLevel >= 0 ? hls.levels[hls.currentLevel] : null;
               if (hls.currentLevel === -1 || !currentLevel || getLevelCodecLabel(currentLevel) === 'HEVC') {
                 applyHlsLevelSelection(hls, sourceIndex);
+                saveQuality(makeQualityLevelKey(hls.levels[sourceIndex], sourceIndex));
                 hls.recoverMediaError();
                 requestLivePlayback(art);
                 updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
@@ -704,6 +722,12 @@ function findHevcUnsafeStreamServSourceLevelIndex(parsedLevels: any[], manifestL
   return findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
 }
 
+function findStreamServAutoSourceLevelIndex(parsedLevels: any[], manifestLevels: any[]) {
+  const hasHevcVariant = manifestLevels.some(isStreamServHevcVariant) || parsedLevels.some(isStreamServHevcVariant);
+  const sourceIndex = findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
+  return hasHevcVariant && sourceIndex !== -1 ? sourceIndex : -1;
+}
+
 function resolveSavedLevelIndex(levels: any[], saved: string | null) {
   if (!saved || saved === 'auto') return -1;
 
@@ -809,7 +833,7 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
 
   const onSelect = (item: { html: string; value: number }) => {
     if (item.value === -1) {
-      const safeSourceIndex = findHevcUnsafeStreamServSourceLevelIndex(hls.levels, manifestLevels);
+      const safeSourceIndex = findStreamServAutoSourceLevelIndex(hls.levels, manifestLevels);
       if (safeSourceIndex !== -1) {
         const safeSourceLabel = variants.find((variant) => variant.levelIndex === safeSourceIndex)?.label
           || makeQualityLevelLabel(hls.levels[safeSourceIndex], safeSourceIndex);
