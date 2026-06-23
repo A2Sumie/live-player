@@ -214,6 +214,15 @@ function _Artplayer({
               setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 100);
               requestLivePlayback(art);
 
+              const safeSourceIndex = findHevcUnsafeStreamServSourceLevelIndex(hls.levels, loadedManifestLevels);
+              if (safeSourceIndex !== -1) {
+                applyHlsLevelSelection(hls, safeSourceIndex);
+                saveQuality(makeQualityLevelKey(hls.levels[safeSourceIndex], safeSourceIndex));
+                updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
+                requestLivePlayback(art);
+                return;
+              }
+
               if (saved) {
                 if (saved === 'auto') {
                   applyHlsLevelSelection(hls, -1);
@@ -270,6 +279,23 @@ function _Artplayer({
 
             hls.on(Hls.Events.LEVEL_SWITCHED, () => {
               updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
+            });
+
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+              if (!data?.fatal || data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
+                return;
+              }
+              const sourceIndex = findStreamServSourceLevelIndex(hls.levels, loadedManifestLevels);
+              if (sourceIndex === -1 || hls.currentLevel === sourceIndex) {
+                return;
+              }
+              const currentLevel = hls.currentLevel >= 0 ? hls.levels[hls.currentLevel] : null;
+              if (hls.currentLevel === -1 || !currentLevel || getLevelCodecLabel(currentLevel) === 'HEVC') {
+                applyHlsLevelSelection(hls, sourceIndex);
+                hls.recoverMediaError();
+                requestLivePlayback(art);
+                updateStreamServRelayVariantControl(art, hls, loadedManifestLevels);
+              }
             });
           }
         },
@@ -505,24 +531,69 @@ function getLevelVariantHint(level: any) {
   ].map(stringifyLevelSource).filter(Boolean).join(' ').toLowerCase();
 }
 
+function getLevelStableVariantId(level: any) {
+  const attrs = level?.attrs || {};
+  return String(attrs['STABLE-VARIANT-ID'] || attrs.STABLE_VARIANT_ID || '').trim().toLowerCase();
+}
+
+function isStreamServSourceVariant(level: any) {
+  const stableId = getLevelStableVariantId(level);
+  const variantHint = getLevelVariantHint(level);
+  return stableId === 'source'
+    || variantHint.includes('relay_source')
+    || variantHint.includes('relay-source')
+    || variantHint.includes('relay_source.m3u8')
+    || variantHint.includes('source-copy')
+    || variantHint.includes('源流');
+}
+
+function isStreamServHevcVariant(level: any) {
+  const stableId = getLevelStableVariantId(level);
+  const variantHint = getLevelVariantHint(level);
+  return stableId.startsWith('hevc')
+    || variantHint.includes('relay_hevc')
+    || variantHint.includes('relay-hevc')
+    || variantHint.includes('hevc_')
+    || variantHint.includes('hevc-')
+    || variantHint.includes('relay_reencode')
+    || variantHint.includes('reencode');
+}
+
 function getLevelCodecLabel(level: any) {
   const vCodec = getLevelVideoCodec(level);
   if (vCodec.includes('hvc') || vCodec.includes('hev')) return 'HEVC';
   if (vCodec.includes('avc') || vCodec.includes('h264')) return 'H264';
 
-  const variantHint = getLevelVariantHint(level);
-  if (variantHint.includes('hevc') || variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return 'HEVC';
-  if (variantHint.includes('relay_source') || variantHint.includes('source-copy')) return 'H264';
+  if (isStreamServHevcVariant(level)) return 'HEVC';
+  if (isStreamServSourceVariant(level)) return 'H264';
 
   const bitrate = typeof level?.bitrate === 'number' ? level.bitrate : 0;
   return bitrate >= 4000000 ? 'HEVC' : '';
 }
 
 function getStreamServVariantLabel(level: any) {
-  const variantHint = getLevelVariantHint(level);
-  if (variantHint.includes('relay_reencode') || variantHint.includes('reencode')) return '转码';
-  if (variantHint.includes('relay_source') || variantHint.includes('source-copy')) return '源流';
+  if (isStreamServHevcVariant(level)) return '转码';
+  if (isStreamServSourceVariant(level)) return '源流';
   return '';
+}
+
+function browserSupportsHevcMse() {
+  if (typeof window === 'undefined') return true;
+  const mediaSource = window.MediaSource || (window as any).WebKitMediaSource;
+  if (!mediaSource || typeof mediaSource.isTypeSupported !== 'function') {
+    return false;
+  }
+  return [
+    'video/mp4; codecs="hvc1.1.6.L93.B0"',
+    'video/mp4; codecs="hev1.1.6.L93.B0"',
+    'video/mp4; codecs="hvc1.1.6.L120.B0"',
+    'video/mp4; codecs="hev1.1.6.L120.B0"',
+    'video/mp4; codecs="hvc1.1.6.L93.B0,mp4a.40.2"',
+  ].some((mimeType) => mediaSource.isTypeSupported(mimeType));
+}
+
+function isLevelPlayableInCurrentBrowser(level: any) {
+  return getLevelCodecLabel(level) !== 'HEVC' || browserSupportsHevcMse();
 }
 
 function getStreamServHevcTargetLabel(level: any) {
@@ -579,6 +650,11 @@ function applyHlsLevelSelection(hls: Hls, levelIndex: number) {
   hls.loadLevel = levelIndex;
   hls.nextLevel = levelIndex;
   (hls as any).nextLoadLevel = levelIndex;
+  try {
+    hls.startLoad();
+  } catch {
+    // hls.js may throw if loading has not been initialized yet.
+  }
 }
 
 function saveQualityValue(value: string | number) {
@@ -605,6 +681,27 @@ function findPreferredH264LevelIndex(levels: any[], preferredHeight?: number) {
   if (matchingH264 !== -1) return matchingH264;
 
   return levels.findIndex(isH264Level);
+}
+
+function findStreamServSourceLevelIndex(parsedLevels: any[], manifestLevels: any[]) {
+  const parsedIndex = parsedLevels.findIndex(isStreamServSourceVariant);
+  if (parsedIndex !== -1) return parsedIndex;
+
+  const manifestSource = manifestLevels.find(isStreamServSourceVariant);
+  if (manifestSource) {
+    return findMatchingParsedLevelIndex(manifestSource, parsedLevels);
+  }
+
+  return -1;
+}
+
+function findHevcUnsafeStreamServSourceLevelIndex(parsedLevels: any[], manifestLevels: any[]) {
+  const hasHevcVariant = manifestLevels.some(isStreamServHevcVariant) || parsedLevels.some(isStreamServHevcVariant);
+  const hasSourceVariant = manifestLevels.some(isStreamServSourceVariant) || parsedLevels.some(isStreamServSourceVariant);
+  if (!hasHevcVariant || !hasSourceVariant || browserSupportsHevcMse()) {
+    return -1;
+  }
+  return findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
 }
 
 function resolveSavedLevelIndex(levels: any[], saved: string | null) {
@@ -661,16 +758,13 @@ function findMatchingParsedLevelIndex(manifestLevel: any, parsedLevels: any[]) {
 
 function streamServRelayVariantOrder(level: any) {
   const variant = getStreamServVariantLabel(level);
-  if (variant === '转码') return 0;
-  if (variant === '源流') return 1;
+  if (variant === '源流') return 0;
+  if (variant === '转码') return 1;
   return 2;
 }
 
 function hasStreamServRelayVariants(levels: any[]) {
-  return levels.some((level) => {
-    const variantHint = getLevelVariantHint(level);
-    return variantHint.includes('relay_reencode') || variantHint.includes('relay_source');
-  });
+  return levels.some((level) => isStreamServHevcVariant(level) || isStreamServSourceVariant(level));
 }
 
 function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestLevels: any[]) {
@@ -683,7 +777,8 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
   const variants = manifestLevels
     .map((manifestLevel, manifestIndex) => {
       const levelIndex = findMatchingParsedLevelIndex(manifestLevel, hls.levels);
-      const supported = levelIndex !== -1;
+      const parsedLevel = levelIndex !== -1 ? hls.levels[levelIndex] : null;
+      const supported = levelIndex !== -1 && isLevelPlayableInCurrentBrowser(parsedLevel || manifestLevel);
       const label = makeQualityLevelLabel(manifestLevel, manifestIndex);
       return {
         manifestIndex,
@@ -714,6 +809,17 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
 
   const onSelect = (item: { html: string; value: number }) => {
     if (item.value === -1) {
+      const safeSourceIndex = findHevcUnsafeStreamServSourceLevelIndex(hls.levels, manifestLevels);
+      if (safeSourceIndex !== -1) {
+        const safeSourceLabel = variants.find((variant) => variant.levelIndex === safeSourceIndex)?.label
+          || makeQualityLevelLabel(hls.levels[safeSourceIndex], safeSourceIndex);
+        applyHlsLevelSelection(hls, safeSourceIndex);
+        saveQualityValue('auto');
+        art.notice.show = `${title}: 自动（${safeSourceLabel}）`;
+        updateStreamServRelayVariantControl(art, hls, manifestLevels);
+        requestLivePlayback(art);
+        return safeSourceLabel;
+      }
       applyHlsLevelSelection(hls, -1);
       saveQualityValue('auto');
       art.notice.show = `${title}: ${autoHtml}`;
@@ -736,6 +842,7 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
     applyHlsLevelSelection(hls, variant.levelIndex);
     saveQualityValue(makeQualityLevelKey(hls.levels[variant.levelIndex], variant.levelIndex));
     art.notice.show = `${title}: ${variant.label}`;
+    requestLivePlayback(art);
     (art.controls as any).check(item);
     (art.setting as any).check(item);
     updateStreamServRelayVariantControl(art, hls, manifestLevels);
