@@ -43,7 +43,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250810.0",
+    "@cloudflare/workers-types": "5.20260719.1",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/jsonwebtoken": "^9.0.10",
@@ -54,7 +54,7 @@
     "eslint-config-next": "^15.5.18",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^4.28.1"
+    "wrangler": "4.112.0"
   },
   "overrides": {
     "fast-xml-parser": "^5.3.4",
