@@ -46,18 +46,7 @@ body {
   width: max-content;
   max-width: none;
   padding-inline: 0.14em;
-  transform: translateX(0);
-  animation: realtime-subtitle-pan 18s ease-in-out infinite alternate;
-  will-change: transform;
-}
-
-@keyframes realtime-subtitle-pan {
-  0%, 18% {
-    transform: translateX(0);
-  }
-  82%, 100% {
-    transform: translateX(min(0px, calc(100cqw - 100%)));
-  }
+  transform: translateX(min(0px, calc(100cqw - 100%)));
 }
 
 .realtime-subtitle-roll--wrap {

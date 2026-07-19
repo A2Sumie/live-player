@@ -118,7 +118,7 @@ function _Artplayer({
     (video: HTMLVideoElement, url: string, art: Artplayer) => {
       if (Hls.isSupported()) {
         if ((art as any).hls) (art as any).hls.destroy();
-        const originUrlObj = new URL(url);
+        const originUrlObj = new URL(url, window.location.href);
         const queryParms = originUrlObj.searchParams;
         const isRelayPlayer = isStreamServRelayPlayer(player, url);
         const defaultVideoLatencyMode = isRelayPlayer ? 'aligned' : 'low';
@@ -135,7 +135,7 @@ function _Artplayer({
           ...hlsLatencyConfig,
           xhrSetup(xhr, tsUrl) {
             if (tsUrl.includes(".ts") || tsUrl.includes(".m4s") || tsUrl.includes(".mp4") || tsUrl.endsWith(".m3u8")) {
-              const tsUrlObj = new URL(tsUrl);
+              const tsUrlObj = new URL(tsUrl, window.location.href);
               queryParms.forEach((value, key) => {
                 tsUrlObj.searchParams.set(key, value);
               });
@@ -149,6 +149,14 @@ function _Artplayer({
 
         // Error Handling
         hls.on(Hls.Events.ERROR, function (event, data) {
+          console.error('HLS playback error', {
+            type: data.type,
+            details: data.details,
+            fatal: data.fatal,
+            responseCode: data.response?.code,
+            responseUrl: data.response?.url,
+            error: data.error,
+          });
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
@@ -161,8 +169,13 @@ function _Artplayer({
                 hls.recoverMediaError();
                 break;
               default:
-                art.notice.show = "无法播放，请手动刷新";
-                hls.destroy();
+                if (data.details === Hls.ErrorDetails.LEVEL_SWITCH_ERROR) {
+                  art.notice.show = "切换画质失败，正在恢复自动画质";
+                  hls.nextLevel = -1;
+                  hls.startLoad();
+                } else {
+                  art.notice.show = `无法播放：${data.details || data.type}`;
+                }
                 break;
             }
           }
@@ -182,13 +195,13 @@ function _Artplayer({
     // Quality Persistence
     const saveQuality = (value: string | number) => {
       if (typeof window !== 'undefined') {
-        localStorage.setItem('artplayer_quality', String(value));
+        localStorage.setItem(QUALITY_STORAGE_KEY, String(value));
       }
     };
 
     const getSavedQuality = () => {
       if (typeof window !== 'undefined') {
-        return localStorage.getItem('artplayer_quality');
+        return localStorage.getItem(QUALITY_STORAGE_KEY);
       }
       return null;
     };
@@ -220,7 +233,11 @@ function _Artplayer({
               setTimeout(() => updateStreamServRelayVariantControl(art, hls, loadedManifestLevels), 100);
               let hasStartedLoad = false;
               const selectAndStart = (levelIndex: number) => {
-                applyHlsLevelSelection(hls, levelIndex);
+                hls.startLevel = levelIndex;
+                if (levelIndex >= 0) {
+                  (hls as any).nextLoadLevel = levelIndex;
+                }
+                hls.startLoad();
                 hasStartedLoad = true;
               };
 
@@ -507,6 +524,7 @@ const LOW_LATENCY_HLS_CONFIG = {
 };
 const REALTIME_VIDEO_MODE_KEY = 'n2nj:realtime-video-mode';
 const REALTIME_VIDEO_DELAY_KEY = 'n2nj:realtime-video-delay-seconds';
+const QUALITY_STORAGE_KEY = 'artplayer_quality_v2';
 const QUALITY_LEVEL_KEY_PREFIX = 'level:';
 
 function makeAlignedHlsConfig(targetDelaySeconds: number) {
@@ -576,6 +594,7 @@ function isStreamServHevcVariant(level: any) {
   const stableId = getLevelStableVariantId(level);
   const variantHint = getLevelVariantHint(level);
   return stableId.startsWith('hevc')
+    || stableId.startsWith('tv_hevc')
     || variantHint.includes('relay_hevc')
     || variantHint.includes('relay-hevc')
     || variantHint.includes('hevc_')
@@ -590,10 +609,7 @@ function getLevelCodecLabel(level: any) {
   if (vCodec.includes('avc') || vCodec.includes('h264')) return 'H264';
 
   if (isStreamServHevcVariant(level)) return 'HEVC';
-  if (isStreamServSourceVariant(level)) return 'H264';
-
-  const bitrate = typeof level?.bitrate === 'number' ? level.bitrate : 0;
-  return bitrate >= 4000000 ? 'HEVC' : '';
+  return '';
 }
 
 function getStreamServVariantLabel(level: any) {
@@ -609,6 +625,10 @@ function browserSupportsHevcMse() {
     return false;
   }
   return [
+    'video/mp4; codecs="hvc1.1.4.L123.B01"',
+    'video/mp4; codecs="hvc1.1.4.L120.B01"',
+    'video/mp4; codecs="hev1.1.4.L123.B01"',
+    'video/mp4; codecs="hev1.1.4.L120.B01"',
     'video/mp4; codecs="hvc1.1.6.L93.B0"',
     'video/mp4; codecs="hev1.1.6.L93.B0"',
     'video/mp4; codecs="hvc1.1.6.L120.B0"',
@@ -684,12 +704,12 @@ function applyHlsLevelSelection(hls: Hls, levelIndex: number) {
 
 function saveQualityValue(value: string | number) {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('artplayer_quality', String(value));
+    localStorage.setItem(QUALITY_STORAGE_KEY, String(value));
   }
 }
 
 function isH264Level(level: any) {
-  return getLevelCodecLabel(level) === 'H264' || getStreamServVariantLabel(level) === '源流';
+  return getLevelCodecLabel(level) === 'H264';
 }
 
 function makeQualityLevelKey(level: any, index: number) {
@@ -726,13 +746,16 @@ function findHevcUnsafeStreamServSourceLevelIndex(parsedLevels: any[], manifestL
   if (!hasHevcVariant || !hasSourceVariant || browserSupportsHevcMse()) {
     return -1;
   }
-  return findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
+  const sourceIndex = findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
+  return sourceIndex !== -1 && isH264Level(parsedLevels[sourceIndex]) ? sourceIndex : -1;
 }
 
 function findStreamServAutoSourceLevelIndex(parsedLevels: any[], manifestLevels: any[]) {
   const hasHevcVariant = manifestLevels.some(isStreamServHevcVariant) || parsedLevels.some(isStreamServHevcVariant);
   const sourceIndex = findStreamServSourceLevelIndex(parsedLevels, manifestLevels);
-  return hasHevcVariant && sourceIndex !== -1 ? sourceIndex : -1;
+  if (!hasHevcVariant || sourceIndex === -1) return -1;
+  const codec = getLevelCodecLabel(parsedLevels[sourceIndex]);
+  return codec && isLevelPlayableInCurrentBrowser(parsedLevels[sourceIndex]) ? sourceIndex : -1;
 }
 
 function resolveSavedLevelIndex(levels: any[], saved: string | null) {
@@ -795,7 +818,10 @@ function streamServRelayVariantOrder(level: any) {
 }
 
 function hasStreamServRelayVariants(levels: any[]) {
-  return levels.some((level) => isStreamServHevcVariant(level) || isStreamServSourceVariant(level));
+  return levels.some((level) => (
+    isStreamServSourceVariant(level)
+    || (isStreamServHevcVariant(level) && !getLevelStableVariantId(level).startsWith('tv_hevc'))
+  ));
 }
 
 function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestLevels: any[]) {
@@ -839,6 +865,10 @@ function updateStreamServRelayVariantControl(art: Artplayer, hls: Hls, manifestL
   const defaultHtml = hls.currentLevel === -1 ? autoHtml : currentVariant?.label || autoHtml;
 
   const onSelect = (item: { html: string; value: number }) => {
+    if ((art as any).hls !== hls) {
+      art.notice.show = '播放器正在重新连接，请稍后再切换画质';
+      return defaultHtml;
+    }
     if (item.value === -1) {
       const safeSourceIndex = findStreamServAutoSourceLevelIndex(hls.levels, manifestLevels);
       if (safeSourceIndex !== -1) {
@@ -933,7 +963,7 @@ type PlaybackTimecode = {
   latencyMs: number | null;
   liveSyncPosition: number | null;
   currentTime: number | null;
-  source: 'hls-latency' | 'clock';
+  source: 'hls-program-date-time' | 'hls-latency' | 'clock';
 };
 
 type VideoLatencyMode = 'aligned' | 'low';
@@ -1328,6 +1358,18 @@ function readPlaybackTimecode(art: Artplayer | null): PlaybackTimecode {
     ? hls.liveSyncPosition
     : null;
 
+  const playingDate = (hls as any)?.playingDate;
+  const playingDateMs = playingDate instanceof Date ? playingDate.getTime() : NaN;
+  if (Number.isFinite(playingDateMs)) {
+    return {
+      wallTimeMs: playingDateMs,
+      latencyMs: Math.max(0, Date.now() - playingDateMs),
+      liveSyncPosition,
+      currentTime,
+      source: 'hls-program-date-time',
+    };
+  }
+
   if (effectiveLatencySeconds !== null && effectiveLatencySeconds >= 0) {
     const latencyMs = effectiveLatencySeconds * 1000;
     return {
@@ -1522,7 +1564,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
     setting: true,
     loop: true,
     flip: true,
-    playbackRate: true,
+    playbackRate: false,
     aspectRatio: true,
     fullscreen: true,
     fullscreenWeb: true,
@@ -1849,14 +1891,18 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
   ]);
 
   useEffect(() => {
-    for (const element of [sourceTranscriptRef.current, translationTranscriptRef.current]) {
-      if (!element) {
+    if (!activeRealtimeSegment) {
+      return;
+    }
+    for (const container of [sourceTranscriptRef.current, translationTranscriptRef.current]) {
+      if (!container) {
         continue;
       }
-      element.scrollTop = element.scrollHeight;
-      element.scrollLeft = 0;
+      const active = container.querySelector<HTMLElement>(`[data-segment-id="${CSS.escape(activeRealtimeSegment.id)}"]`);
+      active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      container.scrollLeft = 0;
     }
-  }, [realtimeSnapshot?.revision, showSourceText, showTranslationText]);
+  }, [activeRealtimeSegment?.id, realtimeSnapshot?.revision, showSourceText, showTranslationText]);
 
   useEffect(() => {
     realtimeSnapshotRef.current = realtimeSnapshot;
@@ -2391,6 +2437,7 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                           setVideoLatencyMode('aligned');
                           setShowTranslationText(true);
                           setShowSourceText(true);
+                          reloadPlayerForLatencyMode('aligned', nextDelaySeconds);
                         }}
                         className="w-20"
                       />
@@ -2499,9 +2546,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                   <div ref={sourceTranscriptRef} className="h-[calc(100%-28px)] overflow-x-hidden overflow-y-auto px-3 pb-2 font-mono text-[12px] leading-6">
                     <p className="whitespace-normal text-slate-200 [overflow-wrap:anywhere] [word-break:keep-all]" lang="ja">
                       {transcriptRows.map(({ segment, color }) => (
-                        <span key={`source-${segment.id}`}>
+                        <span key={`source-${segment.id}`} data-segment-id={segment.id}>
                           <span
-                            className="rounded-sm px-0.5"
+                            className={`rounded-sm px-0.5 ${segment.id === activeRealtimeSegment?.id ? 'bg-white/16 font-bold ring-1 ring-white/30' : ''}`}
                             style={{ color }}
                           >
                             {segment.sourceText || ''}
@@ -2522,9 +2569,9 @@ export default function PlayerComponent({ player, debug = false }: PlayerProps) 
                   <div ref={translationTranscriptRef} className="h-[calc(100%-28px)] overflow-x-hidden overflow-y-auto px-3 pb-2 font-mono text-[12px] leading-6">
                     <p className="whitespace-normal text-slate-100 [overflow-wrap:anywhere] [word-break:keep-all]" lang="zh-CN">
                       {transcriptRows.map(({ segment, color }) => (
-                        <span key={`translation-${segment.id}`}>
+                        <span key={`translation-${segment.id}`} data-segment-id={segment.id}>
                           <span
-                            className={`rounded-sm px-0.5 ${segment.translatedText ? '' : 'text-slate-600'}`}
+                            className={`rounded-sm px-0.5 ${segment.translatedText ? '' : 'text-slate-600'} ${segment.id === activeRealtimeSegment?.id ? 'bg-white/16 font-bold ring-1 ring-white/30' : ''}`}
                             style={{ color: segment.translatedText ? color : undefined }}
                           >
                             {segment.translatedText || ''}

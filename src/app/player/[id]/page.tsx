@@ -21,6 +21,18 @@ function toPlaybackSafePlayer(player: PlayerView): PlayerView {
   });
 }
 
+function proxyStreamUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'stream.n2nj.moe' || !/\/(?:live|sub)\.m3u8$/.test(parsed.pathname)) {
+      return url;
+    }
+    return `/api/stream-proxy${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
 const getPlayer = cache(async (pId: string): Promise<PlayerView | null> => {
   try {
     const player = await memoryCache.getOrFetch(
@@ -100,8 +112,9 @@ export default async function PlayerPage({ params, searchParams }: PlayerPagePro
     const signedUrl = signStreamUrl(player.url);
     if (isDebug) logger.info(`Signed URL: ${signedUrl}`, null, 'PlayerPage');
 
-    // Update player object with signed URL
-    const signedPlayer = { ...player, url: signedUrl };
+    // Only the TV master needs rewriting. Variant playlists and media stay on
+    // the stream origin instead of consuming Worker CPU through the proxy.
+    const signedPlayer = { ...player, url: proxyStreamUrl(signedUrl) };
 
     return (
       <div className="min-h-screen bg-black">
