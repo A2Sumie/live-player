@@ -6,10 +6,9 @@ export async function GET() {
     const user = await getCurrentUser();
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      // Anonymous access is valid for the public site. Keep this probe quiet
+      // in browser developer tools; protected APIs still enforce auth.
+      return NextResponse.json(null);
     }
 
     return NextResponse.json({
@@ -19,8 +18,8 @@ export async function GET() {
   } catch (error) {
     console.error('Auth check error:', error);
     return NextResponse.json(
-      { error: 'Authentication failed' },
-      { status: 401 }
+      { error: 'Authentication check failed' },
+      { status: 500 }
     );
   }
 }
